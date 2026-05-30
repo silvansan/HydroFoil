@@ -1,0 +1,27 @@
+# Shared dev image for HydroFoil Node workspaces (control-api, admin-ui, media-worker, …)
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache curl ffmpeg
+
+COPY package.json package-lock.json ./
+COPY apps/control-api/package.json apps/control-api/
+COPY apps/admin-ui/package.json apps/admin-ui/
+COPY apps/media-worker/package.json apps/media-worker/
+COPY apps/storage-service/package.json apps/storage-service/
+COPY apps/srs-adapter/package.json apps/srs-adapter/
+COPY packages/domain/package.json packages/domain/
+COPY packages/db/package.json packages/db/
+COPY packages/events/package.json packages/events/
+COPY packages/queue/package.json packages/queue/
+COPY packages/storage/package.json packages/storage/
+COPY packages/shared-types/package.json packages/shared-types/
+COPY packages/ui-kit/package.json packages/ui-kit/
+
+RUN npm ci
+
+COPY . .
+
+# Preserve image node_modules when bind-mounting the repo in compose
+VOLUME ["/app/node_modules"]

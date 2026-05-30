@@ -1,0 +1,77 @@
+# Production overlay — see docker-compose.prod.yml header.
+# Keeps infra from docker-compose.yml; swaps app services to prod images.
+
+services:
+  control-api:
+    build:
+      context: .
+      dockerfile: apps/control-api/Dockerfile
+    container_name: hydrofoil-control-api
+    environment:
+      NODE_ENV: production
+      RUN_MIGRATIONS_ON_START: 'true'
+      DATABASE_URL: postgresql://hydrofoil:hydrofoil_dev@postgres:5432/hydrofoil
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
+      SRS_HTTP_API_URL: http://srs:1985
+      SRS_RTMP_FORWARD_BASE: rtmp://127.0.0.1:1935
+      SRS_RTMP_READ_BASE: rtmp://srs:1935
+    volumes: !reset []
+    command: !reset null
+    working_dir: !reset null
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  media-worker:
+    build:
+      context: .
+      dockerfile: apps/media-worker/Dockerfile
+    container_name: hydrofoil-media-worker
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://hydrofoil:hydrofoil_dev@postgres:5432/hydrofoil
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
+      SRS_HTTP_API_URL: http://srs:1985
+      SRS_RTMP_READ_BASE: rtmp://srs:1935
+      SRS_DVR_ROOT: /srs-dvr
+      RECORDING_TRANSCODE_HLS: 'true'
+    volumes:
+      - srs_data:/srs-dvr:ro
+    command: !reset null
+    working_dir: !reset null
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      control-api:
+        condition: service_started
+
+  admin-ui:
+    build:
+      context: .
+      dockerfile: apps/admin-ui/Dockerfile
+    container_name: hydrofoil-admin-ui
+    environment: {}
+    volumes: !reset []
+    ports:
+      - '3000:80'
+    depends_on:
+      control-api:
+        condition: service_started
+      srs:
+        condition: service_started

@@ -1,0 +1,28 @@
+{
+  "name": "@hydrofoil/db",
+  "version": "0.1.0",
+  "description": "Database and migration utilities for HydroFoil",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "migrate": "tsx src/migrate.ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hydrofoil/domain": "*",
+    "@hydrofoil/queue": "*",
+    "@hydrofoil/shared-types": "*",
+    "pg": "^8.11.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.10.0",
+    "tsx": "^3.14.0",
+    "typescript": "^5.1.0",
+    "vitest": "^0.34.0"
+  }
+}

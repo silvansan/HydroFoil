@@ -1,0 +1,216 @@
+# HydroFoil — full stack via: docker compose up --build
+# Admin UI: http://localhost:3000  |  API: http://localhost:3001
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hydrofoil-postgres
+    environment:
+      POSTGRES_DB: hydrofoil
+      POSTGRES_USER: hydrofoil
+      POSTGRES_PASSWORD: hydrofoil_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hydrofoil']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hydrofoil-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: hydrofoil-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ':9001'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  srs:
+    image: ossrs/srs:5
+    container_name: hydrofoil-srs
+    ports:
+      - '1935:1935'
+      - '8080:8080'
+      - '1985:1985'
+      - '8000:8000/udp'
+      - '8000:8000/tcp'
+      - '10080:10080/udp'
+    volumes:
+      - ./config/srs/srs.conf:/usr/local/srs/conf/srs.conf
+      - srs_data:/usr/local/srs/objs/nginx/html
+    depends_on:
+      control-api:
+        condition: service_started
+    healthcheck:
+      # The SRS image does not ship curl/wget; probe the API port directly.
+      test: ['CMD-SHELL', ': >/dev/tcp/127.0.0.1/1985']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: hydrofoil-migrate
+    environment:
+      DATABASE_URL: postgresql://hydrofoil:hydrofoil_dev@postgres:5432/hydrofoil
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      sh -lc "npm run build -w @hydrofoil/shared-types
+      && npm run build -w @hydrofoil/domain
+      && npm run build -w @hydrofoil/queue
+      && npm run build -w @hydrofoil/db
+      && npm run migrate"
+    restart: 'no'
+
+  control-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: hydrofoil-control-api
+    environment:
+      DATABASE_URL: postgresql://hydrofoil:hydrofoil_dev@postgres:5432/hydrofoil
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
+      SRS_HTTP_API_URL: http://srs:1985
+      SRS_RTMP_FORWARD_BASE: rtmp://127.0.0.1:1935
+      SRS_RTMP_READ_BASE: rtmp://srs:1935
+      NODE_ENV: development
+      RUN_MIGRATIONS_ON_START: 'true'
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      - app_node_modules:/app/node_modules
+    working_dir: /app
+    command: npm run dev -w @hydrofoil/control-api
+
+  media-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: hydrofoil-media-worker
+    environment:
+      DATABASE_URL: postgresql://hydrofoil:hydrofoil_dev@postgres:5432/hydrofoil
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
+      SRS_HTTP_API_URL: http://srs:1985
+      SRS_RTMP_READ_BASE: rtmp://srs:1935
+      SRS_DVR_ROOT: /srs-dvr
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      control-api:
+        condition: service_started
+    volumes:
+      - .:/app
+      - app_node_modules:/app/node_modules
+      - srs_data:/srs-dvr:ro
+    working_dir: /app
+    command: npm run dev -w @hydrofoil/media-worker
+
+  admin-ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: hydrofoil-admin-ui
+    environment:
+      NODE_ENV: development
+      VITE_API_PROXY_TARGET: http://control-api:3001
+      # Vite dev proxy: localhost:8080 is the UI container, not SRS
+      VITE_SRS_PLAYBACK_PROXY: http://srs:8080
+      VITE_SRS_API_PROXY: http://srs:1985
+      VITE_REPOSITORY_URL: https://github.com/silvansan/HydroFoil
+      VITE_LICENSE_LABEL: AGPL-3.0
+    ports:
+      - '${ADMIN_UI_PORT:-3000}:3000'
+    depends_on:
+      - control-api
+    volumes:
+      - .:/app
+      - app_node_modules:/app/node_modules
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -w @hydrofoil/admin-ui -- --host 0.0.0.0"
+
+  storage-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: hydrofoil-storage-service
+    environment:
+      DATABASE_URL: postgresql://hydrofoil:hydrofoil_dev@postgres:5432/hydrofoil
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
+      NODE_ENV: development
+    ports:
+      - '3002:3002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - app_node_modules:/app/node_modules
+    working_dir: /app
+    command: npm run dev -w @hydrofoil/storage-service
+    profiles:
+      - storage
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  srs_data:
+  app_node_modules:
+
+networks:
+  default:
+    name: hydrofoil

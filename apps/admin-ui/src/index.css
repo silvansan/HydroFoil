@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Brand tokens — used in plain CSS so @apply never depends on JIT-generated hydro-* utilities */
+@layer base {
+  :root {
+    --hf-base: #050a14;
+    --hf-panel: #0c1628;
+    --hf-border: #1a2d4a;
+    --hf-sidebar: #07111f;
+    --hf-sidebar-end: #061018;
+    --hf-text: #f1f5f9;
+    --hf-text-strong: #e2e8f0;
+    --hf-muted: #94a3b8;
+    --hf-subtle: #64748b;
+    --hf-field: rgb(5 10 20 / 0.5);
+    --hf-footer: rgb(12 22 40 / 0.82);
+    --hf-gradient: linear-gradient(135deg, #050a14 0%, #0a1628 40%, #0c2238 70%, #061018 100%);
+    --hf-sidebar-gradient: linear-gradient(180deg, #0a1424 0%, #061018 100%);
+    --hf-brand-500: #00c8e8;
+    --hf-brand-600: #00a0ba;
+    --hf-brand-800: #00505e;
+    --hf-shadow: 0 4px 24px rgba(0, 200, 232, 0.12);
+  }
+
+  :root[data-theme='light'] {
+    --hf-base: #f6fbff;
+    --hf-panel: #ffffff;
+    --hf-border: #c8d9e8;
+    --hf-sidebar: #eef7fb;
+    --hf-sidebar-end: #dceff6;
+    --hf-text: #0f172a;
+    --hf-text-strong: #0f172a;
+    --hf-muted: #475569;
+    --hf-subtle: #64748b;
+    --hf-field: rgb(255 255 255 / 0.9);
+    --hf-footer: rgb(255 255 255 / 0.9);
+    --hf-gradient: linear-gradient(135deg, #f8fcff 0%, #eef8fc 45%, #e1f3f8 100%);
+    --hf-sidebar-gradient: linear-gradient(180deg, #f7fcff 0%, #e5f3f8 100%);
+    --hf-shadow: 0 4px 22px rgba(15, 23, 42, 0.08);
+  }
+}
+
+* {
+  @apply box-border;
+}
+
+body {
+  @apply font-sans antialiased text-slate-100;
+  background: var(--hf-base);
+  color: var(--hf-text);
+}
+
+html {
+  @apply scroll-smooth;
+}
+
+@layer components {
+  .hf-card {
+    @apply rounded-xl backdrop-blur-sm;
+    border: 1px solid color-mix(in srgb, var(--hf-border) 72%, transparent);
+    background-color: color-mix(in srgb, var(--hf-panel) 82%, transparent);
+    box-shadow: var(--hf-shadow);
+  }
+
+  .hf-input,
+  .hf-select {
+    @apply w-full rounded-lg px-3 py-2 placeholder-slate-500
+      focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500;
+    border: 1px solid var(--hf-border);
+    background-color: var(--hf-field);
+    color: var(--hf-text);
+  }
+
+  .hf-muted {
+    color: var(--hf-muted);
+    font-size: 0.875rem;
+  }
+
+  .hf-strong,
+  .hf-title {
+    color: var(--hf-text-strong);
+  }
+
+  .hf-app-shell {
+    background: var(--hf-gradient);
+    color: var(--hf-text);
+  }
+
+  .hf-sidebar {
+    background: var(--hf-sidebar-gradient);
+    border-color: color-mix(in srgb, var(--hf-border) 70%, transparent);
+  }
+
+  .hf-sidebar-logo,
+  .hf-sidebar-meta,
+  .hf-header,
+  .hf-footer {
+    border-color: color-mix(in srgb, var(--hf-border) 70%, transparent);
+  }
+
+  .hf-sidebar-meta,
+  .hf-footer {
+    color: var(--hf-subtle);
+  }
+
+  .hf-header {
+    background-color: color-mix(in srgb, var(--hf-panel) 55%, transparent);
+  }
+
+  .hf-footer {
+    background-color: var(--hf-footer);
+  }
+
+  .hf-nav-link-idle {
+    color: var(--hf-muted);
+  }
+
+  .hf-nav-link-idle:hover {
+    color: var(--hf-text-strong);
+    background-color: color-mix(in srgb, var(--hf-panel) 65%, transparent);
+  }
+
+  .hf-nav-link-active {
+    background-color: color-mix(in srgb, var(--hf-brand-600) 18%, transparent);
+    border-color: color-mix(in srgb, var(--hf-brand-500) 30%, transparent);
+    color: var(--hf-brand-500);
+  }
+
+  .hf-theme-toggle,
+  .hf-footer-theme {
+    border-color: color-mix(in srgb, var(--hf-border) 80%, transparent);
+    background-color: color-mix(in srgb, var(--hf-panel) 70%, transparent);
+    color: var(--hf-text-strong);
+  }
+
+  .hf-theme-toggle:hover,
+  .hf-footer-theme:hover {
+    border-color: var(--hf-brand-500);
+    color: var(--hf-brand-500);
+  }
+
+  :root[data-theme='light'] .text-slate-100,
+  :root[data-theme='light'] .text-slate-200,
+  :root[data-theme='light'] .text-slate-300 {
+    color: var(--hf-text-strong);
+  }
+
+  :root[data-theme='light'] .text-slate-400,
+  :root[data-theme='light'] .text-slate-500 {
+    color: var(--hf-muted);
+  }
+
+  :root[data-theme='light'] .bg-slate-900\/40,
+  :root[data-theme='light'] .bg-slate-900\/50,
+  :root[data-theme='light'] .bg-slate-800\/40,
+  :root[data-theme='light'] .bg-slate-700\/80 {
+    background-color: color-mix(in srgb, var(--hf-panel) 88%, transparent);
+  }
+
+  :root[data-theme='light'] .border-slate-700\/50,
+  :root[data-theme='light'] .border-slate-800\/50,
+  :root[data-theme='light'] .border-slate-800\/60,
+  :root[data-theme='light'] .border-slate-600 {
+    border-color: color-mix(in srgb, var(--hf-border) 80%, transparent);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+  background-color: var(--hf-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--hf-brand-800);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--hf-brand-600);
+}

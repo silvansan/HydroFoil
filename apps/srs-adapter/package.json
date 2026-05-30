@@ -1,0 +1,32 @@
+{
+  "name": "@hydrofoil/srs-adapter",
+  "version": "0.1.0",
+  "description": "SRS media engine adapter for HydroFoil",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/run.ts",
+    "types": "dist/index.d.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run --passWithNoTests",
+    "lint": "tsc --noEmit",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hydrofoil/domain": "*",
+    "@hydrofoil/db": "*",
+    "@hydrofoil/events": "*",
+    "@hydrofoil/queue": "*",
+    "@hydrofoil/shared-types": "*",
+    "axios": "^1.5.0",
+    "pino": "^8.16.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^3.14.0",
+    "typescript": "^5.1.0",
+    "vitest": "^0.34.0"
+  }
+}

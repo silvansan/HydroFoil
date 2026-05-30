@@ -1,0 +1,44 @@
+{
+  "name": "hydrofoil",
+  "version": "0.1.0",
+  "description": "Clean, operator-friendly live media control plane on SRS",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/silvansan/HydroFoil.git"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d",
+    "docker:prod:build": "docker compose -f docker-compose.yml -f docker-compose.prod.yml build control-api media-worker admin-ui",
+    "docker:prod:smoke": "node scripts/prod-smoke.mjs",
+    "migrate": "npm run migrate -w @hydrofoil/db"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "eslint": "^8.50.0",
+    "prettier": "^3.0.0",
+    "turbo": "^1.10.0",
+    "typescript": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "hls.js": "^1.6.16"
+  }
+}

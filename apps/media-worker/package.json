@@ -1,0 +1,38 @@
+{
+  "name": "@hydrofoil/media-worker",
+  "version": "0.1.0",
+  "description": "Queue-driven media worker for HydroFoil",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run --passWithNoTests",
+    "lint": "tsc --noEmit",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hydrofoil/domain": "*",
+    "@hydrofoil/db": "*",
+    "@hydrofoil/events": "*",
+    "@hydrofoil/queue": "*",
+    "@hydrofoil/srs-adapter": "*",
+    "@hydrofoil/storage": "*",
+    "@hydrofoil/shared-types": "*",
+    "pg": "^8.11.0",
+    "redis": "^4.6.0",
+    "bull": "^4.11.0",
+    "pino": "^8.16.0",
+    "ffmpeg": "^0.0.4",
+    "fluent-ffmpeg": "^2.1.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.0",
+    "tsx": "^3.14.0",
+    "@types/node": "^20.0.0",
+    "@types/bull": "^3.15.0",
+    "@types/node": "^20.0.0",
+    "vitest": "^0.34.0"
+  }
+}

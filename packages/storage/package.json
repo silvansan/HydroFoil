@@ -1,0 +1,22 @@
+{
+  "name": "@hydrofoil/storage",
+  "version": "0.1.0",
+  "description": "Storage abstraction layer for HydroFoil",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hydrofoil/shared-types": "*",
+    "minio": "^7.0.32",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.0",
+    "vitest": "^0.34.0"
+  }
+}

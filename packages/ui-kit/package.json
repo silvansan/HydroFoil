@@ -1,0 +1,33 @@
+{
+  "name": "@hydrofoil/ui-kit",
+  "version": "0.1.0",
+  "description": "Shared UI components for HydroFoil",
+  "type": "module",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "exports": {
+    ".": {
+      "types": "./src/index.tsx",
+      "import": "./src/index.tsx",
+      "default": "./src/index.tsx"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "dependencies": {
+    "@hydrofoil/shared-types": "*",
+    "lucide-react": "^0.263.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@hydrofoil/domain": ["packages/domain/src/index.ts"],
+      "@hydrofoil/db": ["packages/db/src/index.ts"],
+      "@hydrofoil/events": ["packages/events/src/index.ts"],
+      "@hydrofoil/queue": ["packages/queue/src/index.ts"],
+      "@hydrofoil/storage": ["packages/storage/src/index.ts"],
+      "@hydrofoil/shared-types": ["packages/shared-types/src/index.ts"],
+      "@hydrofoil/ui-kit": ["packages/ui-kit/src/index.tsx"],
+      "@hydrofoil/player": ["packages/player/src/index.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist", "build"]
+}

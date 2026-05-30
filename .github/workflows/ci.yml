@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check control-api
+        run: npm run type-check -w @hydrofoil/control-api
+
+      - name: Unit tests
+        run: |
+          npm run test -w @hydrofoil/domain
+          npm run test -w @hydrofoil/db
+
+      - name: Build workspace packages
+        run: |
+          npm run build -w @hydrofoil/shared-types
+          npm run build -w @hydrofoil/domain
+          npm run build -w @hydrofoil/db
+          npm run build -w @hydrofoil/events
+          npm run build -w @hydrofoil/queue
+          npm run build -w @hydrofoil/storage
+          npm run build -w @hydrofoil/srs-adapter
+          npm run build -w @hydrofoil/control-api
+          npm run build -w @hydrofoil/media-worker
+
+  prod-compose-smoke:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build prod images
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml build control-api media-worker admin-ui
+
+      - name: Start prod stack
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgres redis minio migrate control-api media-worker srs admin-ui
+
+      - name: Prod smoke checks
+        run: node scripts/prod-smoke.mjs
+
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --no-color control-api admin-ui media-worker
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
