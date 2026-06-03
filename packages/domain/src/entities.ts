@@ -50,6 +50,9 @@ export const inputSchema = baseEntitySchema.extend({
   streamProfileId: z.string().uuid().optional(),
   recordingPolicyId: z.string().uuid().optional(),
   audioFeedProfileId: z.string().uuid().optional(),
+  streamProfileIds: z.array(z.string().uuid()).optional(),
+  recordingPolicyIds: z.array(z.string().uuid()).optional(),
+  audioFeedProfileIds: z.array(z.string().uuid()).optional(),
 });
 
 export type Input = z.infer<typeof inputSchema>;

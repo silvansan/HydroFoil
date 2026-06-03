@@ -4,7 +4,23 @@ A clean, operator-friendly live media control plane on **SRS** (Simple Realtime 
 
 HydroFoil owns routing, recording policy, storage paths, and sessions. SRS is the runtime media engine for ingest, forwarding, DVR hooks, and playback plumbing.
 
-Development note: HydroFoil is Cursor AI-aided.
+This project uses **Cursor-AI assisted coding** for parts of the codebase.
+
+## Deploy with Portainer (production)
+
+One stack, one env file — no SSH required if you use **Git repository** in Portainer.
+
+| Step | File / action |
+|------|----------------|
+| 1. Stack compose | Paste or set compose path to [`deploy/portainer/PORTAINER_STACK.yml`](deploy/portainer/PORTAINER_STACK.yml) |
+| 2. Environment variables | Copy from [`deploy/portainer/.env.example`](deploy/portainer/.env.example) — replace every `CHANGE_ME` |
+| 3. Deploy | Portainer → **Stacks** → **Add stack** → see [`deploy/portainer/README.md`](deploy/portainer/README.md) |
+
+**Git repository (recommended):** Repository URL `https://github.com/silvansan/HydroFoil.git`, compose path `deploy/portainer/PORTAINER_STACK.yml`, then paste env vars from `.env.example`.
+
+**Bulk env import:** edit [`deploy/portainer/.env.copypaste`](deploy/portainer/.env.copypaste) and upload in Portainer **Advanced mode**.
+
+Greenfield checklist: [docs/PRODUCTION_DEPLOY.md](docs/PRODUCTION_DEPLOY.md)
 
 ## Overview
 
@@ -65,10 +81,12 @@ npm run dev -w @hydrofoil/media-worker
 npm run dev -w @hydrofoil/admin-ui
 ```
 
-**Production-style stack:**
+**Production-style stack (greenfield — copy env first):**
 
 ```bash
+cp .env.prod.example .env.prod   # edit secrets before real deploy
 npm run docker:prod
+npm run docker:prod:smoke
 ```
 
 After changing routes, the media worker persists desired gateway config. Point SRS webhooks at `POST http://control-api:3001/api/webhooks/srs` (see `config/srs/srs.conf` comments).
@@ -88,7 +106,7 @@ After changing routes, the media worker persists desired gateway config. Point S
 
 - [x] Monorepo scaffold (apps + packages)
 - [x] OME → SRS migration (gateway fields, `srs-adapter`, Compose SRS service)
-- [x] Postgres schema migrations `001`–`003` + migration runner (`npm run migrate`)
+- [x] Postgres schema migrations `001`–`017` + migration runner (`npm run migrate`; see `packages/db/migrations/README.md`)
 - [x] Domain modules + unit tests
 - [x] Admin UI shell + navigation
 - [x] **control-api** Postgres CRUD: inputs, outputs, routes, domain blocks, storage locations
@@ -143,15 +161,22 @@ REDIS_URL=redis://localhost:6379
 MINIO_ENDPOINT=localhost:9000
 MINIO_PUBLIC_ENDPOINT=localhost:9000
 STORAGE_SECRET_KEY=change-me-before-adding-remote-storage
+AUTH_TOKEN_SECRET=change-me-min-32-chars
+PLAYBACK_TOKEN_SECRET=change-me-min-32-chars
+DEFAULT_ADMIN_EMAIL=admin@hydrofoil.local
+DEFAULT_ADMIN_PASSWORD=change-me-now
 SOURCE_FLV_CLEANUP_INTERVAL_MS=3600000
 VITE_WEBRTC_ICE_SERVERS=stun:stun.l.google.com:19302
 SRS_HTTP_API_URL=http://localhost:1985
 DEFAULT_ORGANIZATION_SLUG=default
 ```
 
+Copy from `.env.example` for local dev. **Production:** copy `.env.prod.example` → `.env.prod`, or deploy with Portainer using [deploy/portainer/PORTAINER_STACK.yml](deploy/portainer/PORTAINER_STACK.yml) + [deploy/portainer/.env.example](deploy/portainer/.env.example) — see [deploy/portainer/README.md](deploy/portainer/README.md).
+
 `STORAGE_SECRET_KEY` encrypts newly saved per-location S3 credentials. Leave it stable once remote storage locations exist, otherwise encrypted credentials cannot be decrypted.
+`AUTH_TOKEN_SECRET` signs operator JWTs; rotate only with a planned logout for all users.
 `SOURCE_FLV_CLEANUP_INTERVAL_MS` controls how often the media worker deletes expired 24h source FLV copies; set it to `0` to disable the cleanup loop.
-`VITE_WEBRTC_ICE_SERVERS` controls STUN/TURN servers used by the admin Monitor WHEP player.
+`VITE_WEBRTC_ICE_SERVERS` controls STUN/TURN servers used by the admin Monitor WHEP player (set at admin-ui **build** time for production images).
 
 ## Tests
 

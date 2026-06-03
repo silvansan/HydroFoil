@@ -1,13 +1,49 @@
+# Dependencies and build output
 node_modules/
 dist/
 build/
 .turbo/
-*.log
-.DS_Store
-.env
-.env.local
-.env.*.local
 coverage/
 .next/
 out/
 .cache/
+
+# Logs and OS
+*.log
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Secrets and local environment (keep *.example and .env.ci committed)
+.env
+.env.local
+.env.prod
+.env.*.local
+!.env.example
+!.env.prod.example
+!.env.ci
+deploy/portainer/stack.env
+!deploy/portainer/.env.example
+!deploy/portainer/.env.copypaste
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Local tooling / agent scratch output
+.compile_output.txt
+.trace.txt
+
+# Cursor, Copilot, and agent session artifacts (local only — do not commit)
+.cursor/
+agent-transcripts/
+**/agent-transcripts/
+.specstory/
+AGENTS.md
+.github/copilot-instructions.md
+
+# Optional local planning notes (uncomment if you use these names)
+# PLAN.local.md
+# NOTES.local.md
+# *.plan.local.md

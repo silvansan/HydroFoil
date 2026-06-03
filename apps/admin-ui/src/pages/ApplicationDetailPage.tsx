@@ -18,7 +18,7 @@ import { usePublishingIndex } from '../hooks/usePublishingIndex';
 import { isInputPublishing } from '../lib/live-status';
 import { ClickableRow, RowActionsCell } from '../components/ClickableRow';
 import { CopyableUrl } from '../components/CopyableUrl';
-import { rtmpIngestUrl } from '../lib/stream';
+import { canSubmitInputForm, generateIngestUrl, resolveInputStreamKey } from '../lib/stream';
 
 const ApplicationDetailPage: React.FC = () => {
   const { applicationId } = useParams<{ applicationId: string }>();
@@ -64,7 +64,7 @@ const ApplicationDetailPage: React.FC = () => {
     load();
   }, [load]);
 
-  const canSubmit = form.name.trim().length > 0 && form.streamKey.trim().length > 0;
+  const canSubmit = canSubmitInputForm(form);
 
   const openAddInput = () => {
     setSubmitError(null);
@@ -80,8 +80,9 @@ const ApplicationDetailPage: React.FC = () => {
       await api.createInput({
         applicationId,
         name: form.name.trim(),
-        streamKey: form.streamKey.trim(),
+        streamKey: resolveInputStreamKey(form.name, form.ingestProtocol, form.streamKey),
         ingestProtocol: form.ingestProtocol,
+        protocolConfig: form.protocolConfig,
         enabled: true,
       });
       setIsModalOpen(false);
@@ -107,8 +108,13 @@ const ApplicationDetailPage: React.FC = () => {
     try {
       await api.updateInput(editTarget.id, {
         name: editForm.name.trim(),
-        streamKey: editForm.streamKey.trim(),
+        streamKey: resolveInputStreamKey(
+          editForm.name,
+          editForm.ingestProtocol,
+          editForm.streamKey
+        ),
         ingestProtocol: editForm.ingestProtocol,
+        protocolConfig: editForm.protocolConfig,
         enabled: editEnabled,
       });
       setEditTarget(null);
@@ -240,7 +246,12 @@ const ApplicationDetailPage: React.FC = () => {
                     )}
                   </div>
                   <CopyableUrl
-                    url={rtmpIngestUrl(input.streamKey, appName)}
+                    url={generateIngestUrl(
+                      input.ingestProtocol,
+                      input.streamKey,
+                      input.protocolConfig,
+                      appName
+                    )}
                     className="text-xs break-all max-w-full"
                     onCopied={notify}
                   />

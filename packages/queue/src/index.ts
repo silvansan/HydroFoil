@@ -76,6 +76,7 @@ export interface GenerateAudioAssetJob extends JobData {
   streamKey?: string;
   recordingObjectKey?: string;
   durationSec?: number;
+  sessionStartedAtMs?: number;
 }
 
 export interface ReconcileGatewayConfigJob extends JobData {
@@ -166,6 +167,7 @@ export async function enqueueGenerateAudioAsset(
     removeOnFail: false,
     attempts: 5,
     backoff: { type: 'exponential', delay: 3000 },
+    delay: job.trigger === 'live' ? 8_000 : undefined,
   });
 }
 

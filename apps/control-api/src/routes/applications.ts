@@ -7,6 +7,12 @@ import { asyncHandler } from '../middleware/async-handler';
 import { isValidAppName, slugifyAppName } from '../lib/slug';
 import { formatZodError } from '../lib/zod-errors';
 import { parsePagination } from '../lib/pagination';
+import {
+  assertApplicationAccess,
+  canManageApplications,
+  getAccessScope,
+} from '../lib/access-control';
+import { ForbiddenError } from '../errors';
 
 const appNameSchema = z
   .string()
@@ -43,7 +49,11 @@ export function createApplicationsRouter(ctx: AppContext): Router {
   router.get(
     '/',
     asyncHandler(async (req, res) => {
-      const result = await ctx.repos.applications.list(ctx.organizationId, parsePagination(req));
+      const scope = getAccessScope(req);
+      const result = await ctx.repos.applications.list(ctx.organizationId, {
+        ...parsePagination(req),
+        applicationIds: scope.applicationIds ?? undefined,
+      });
       res.json(result);
     })
   );
@@ -51,6 +61,8 @@ export function createApplicationsRouter(ctx: AppContext): Router {
   router.get(
     '/:id',
     asyncHandler(async (req, res) => {
+      const scope = getAccessScope(req);
+      assertApplicationAccess(scope, req.params.id);
       const application = await ctx.repos.applications.findById(ctx.organizationId, req.params.id);
       if (!application) {
         throw new NotFoundError('Application not found');
@@ -62,6 +74,8 @@ export function createApplicationsRouter(ctx: AppContext): Router {
   router.get(
     '/:id/inputs',
     asyncHandler(async (req, res) => {
+      const scope = getAccessScope(req);
+      assertApplicationAccess(scope, req.params.id);
       const application = await ctx.repos.applications.findById(ctx.organizationId, req.params.id);
       if (!application) {
         throw new NotFoundError('Application not found');
@@ -74,6 +88,9 @@ export function createApplicationsRouter(ctx: AppContext): Router {
   router.post(
     '/',
     asyncHandler(async (req, res) => {
+      if (!canManageApplications(getAccessScope(req))) {
+        throw new ForbiddenError('Only admins can create applications');
+      }
       const parsed = createApplicationSchema.safeParse(req.body);
       if (!parsed.success) {
         throw new BadRequestError(formatZodError(parsed.error));
@@ -95,6 +112,9 @@ export function createApplicationsRouter(ctx: AppContext): Router {
   router.patch(
     '/:id',
     asyncHandler(async (req, res) => {
+      if (!canManageApplications(getAccessScope(req))) {
+        throw new ForbiddenError('Only admins can update applications');
+      }
       const parsed = updateApplicationSchema.safeParse(req.body);
       if (!parsed.success) {
         throw new BadRequestError(formatZodError(parsed.error));
@@ -123,6 +143,9 @@ export function createApplicationsRouter(ctx: AppContext): Router {
   router.delete(
     '/:id',
     asyncHandler(async (req, res) => {
+      if (!canManageApplications(getAccessScope(req))) {
+        throw new ForbiddenError('Only admins can delete applications');
+      }
       const application = await ctx.repos.applications.findById(
         ctx.organizationId,
         req.params.id

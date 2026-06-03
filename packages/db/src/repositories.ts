@@ -1,6 +1,7 @@
 import {
   mapApplication,
   mapAudioFeedProfile,
+  mapDvrWatchlistEntry,
   mapDomainBlock,
   mapGeneratedAudioAsset,
   mapInput,
@@ -8,11 +9,14 @@ import {
   mapOrganization,
   mapOutput,
   mapRecordingAsset,
+  mapRecordingAssetWithContext,
   mapRecordingPolicy,
   mapRoute,
   mapStorageLocation,
   mapStorageLocationWithSecrets,
   mapStreamProfile,
+  mapUser,
+  mapVodRoute,
 } from './mapper';
 import { Database } from './index';
 
@@ -48,28 +52,60 @@ export class OrganizationRepository {
   }
 }
 
-const INPUT_SELECT = `SELECT i.*, a.name AS application_name, a.app_name AS application_app_name
+const INPUT_SELECT = `SELECT i.*, a.name AS application_name, a.app_name AS application_app_name,
+    COALESCE(
+      (SELECT array_agg(irp.recording_policy_id ORDER BY irp.sort_order, irp.created_at)
+       FROM input_recording_policies irp
+       WHERE irp.input_id = i.id),
+      CASE WHEN i.recording_policy_id IS NOT NULL THEN ARRAY[i.recording_policy_id] ELSE ARRAY[]::uuid[] END
+    ) AS recording_policy_ids,
+    COALESCE(
+      (SELECT array_agg(isp.stream_profile_id ORDER BY isp.sort_order, isp.created_at)
+       FROM input_stream_profiles isp
+       WHERE isp.input_id = i.id),
+      CASE WHEN i.stream_profile_id IS NOT NULL THEN ARRAY[i.stream_profile_id] ELSE ARRAY[]::uuid[] END
+    ) AS stream_profile_ids,
+    COALESCE(
+      (SELECT array_agg(iafp.audio_feed_profile_id ORDER BY iafp.sort_order, iafp.created_at)
+       FROM input_audio_feed_profiles iafp
+       WHERE iafp.input_id = i.id),
+      CASE WHEN i.audio_feed_profile_id IS NOT NULL THEN ARRAY[i.audio_feed_profile_id] ELSE ARRAY[]::uuid[] END
+    ) AS audio_feed_profile_ids
   FROM inputs i
   INNER JOIN applications a ON a.id = i.application_id`;
 
 export class ApplicationRepository {
   constructor(private readonly db: Database) {}
 
-  async list(organizationId: string, params: PaginationParams = {}) {
+  async list(
+    organizationId: string,
+    params: PaginationParams & { applicationIds?: string[] } = {}
+  ) {
     const { safePage, safeSize, offset } = paginationClause(params.page, params.pageSize);
+    const filters = ['a.organization_id = $1'];
+    const values: unknown[] = [organizationId];
+    let index = 2;
+
+    if (params.applicationIds?.length) {
+      filters.push(`a.id = ANY($${index}::uuid[])`);
+      values.push(params.applicationIds);
+      index += 1;
+    }
+
+    const where = filters.join(' AND ');
     const count = await this.db.query(
-      'SELECT COUNT(*)::int AS total FROM applications WHERE organization_id = $1',
-      [organizationId]
+      `SELECT COUNT(*)::int AS total FROM applications a WHERE ${where}`,
+      values
     );
     const total = count.rows[0].total as number;
     const result = await this.db.query(
       `SELECT a.*,
         (SELECT COUNT(*)::int FROM inputs WHERE application_id = a.id) AS input_count
        FROM applications a
-       WHERE a.organization_id = $1
+       WHERE ${where}
        ORDER BY a.name
-       LIMIT $2 OFFSET $3`,
-      [organizationId, safeSize, offset]
+       LIMIT $${index} OFFSET $${index + 1}`,
+      [...values, safeSize, offset]
     );
     return {
       items: result.rows.map(mapApplication),
@@ -170,9 +206,28 @@ export class ApplicationRepository {
 export class InputRepository {
   constructor(private readonly db: Database) {}
 
+  private async syncAssignments(
+    table: 'input_recording_policies' | 'input_stream_profiles' | 'input_audio_feed_profiles',
+    column: 'recording_policy_id' | 'stream_profile_id' | 'audio_feed_profile_id',
+    inputId: string,
+    ids: string[] | undefined
+  ) {
+    if (ids === undefined) return;
+    await this.db.query(`DELETE FROM ${table} WHERE input_id = $1`, [inputId]);
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    for (const [index, id] of uniqueIds.entries()) {
+      await this.db.query(
+        `INSERT INTO ${table} (input_id, ${column}, sort_order)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (input_id, ${column}) DO UPDATE SET sort_order = EXCLUDED.sort_order`,
+        [inputId, id, index]
+      );
+    }
+  }
+
   async list(
     organizationId: string,
-    params: PaginationParams & { applicationId?: string } = {}
+    params: PaginationParams & { applicationId?: string; applicationIds?: string[] } = {}
   ) {
     const { safePage, safeSize, offset } = paginationClause(params.page, params.pageSize);
     const filters = ['i.organization_id = $1'];
@@ -182,6 +237,10 @@ export class InputRepository {
     if (params.applicationId) {
       filters.push(`i.application_id = $${index}`);
       values.push(params.applicationId);
+      index += 1;
+    } else if (params.applicationIds?.length) {
+      filters.push(`i.application_id = ANY($${index}::uuid[])`);
+      values.push(params.applicationIds);
       index += 1;
     }
 
@@ -226,8 +285,14 @@ export class InputRepository {
       streamProfileId?: string;
       recordingPolicyId?: string;
       audioFeedProfileId?: string;
+      streamProfileIds?: string[];
+      recordingPolicyIds?: string[];
+      audioFeedProfileIds?: string[];
     }
   ) {
+    const streamProfileIds = data.streamProfileIds ?? (data.streamProfileId ? [data.streamProfileId] : []);
+    const recordingPolicyIds = data.recordingPolicyIds ?? (data.recordingPolicyId ? [data.recordingPolicyId] : []);
+    const audioFeedProfileIds = data.audioFeedProfileIds ?? (data.audioFeedProfileId ? [data.audioFeedProfileId] : []);
     const result = await this.db.query(
       `INSERT INTO inputs (
         organization_id, application_id, name, stream_key, ingest_protocol, enabled,
@@ -242,12 +307,15 @@ export class InputRepository {
         data.ingestProtocol,
         data.enabled ?? true,
         data.sourceRestrictions ?? null,
-        data.streamProfileId ?? null,
-        data.recordingPolicyId ?? null,
-        data.audioFeedProfileId ?? null,
+        streamProfileIds[0] ?? null,
+        recordingPolicyIds[0] ?? null,
+        audioFeedProfileIds[0] ?? null,
       ]
     );
     const created = result.rows[0];
+    await this.syncAssignments('input_stream_profiles', 'stream_profile_id', String(created.id), streamProfileIds);
+    await this.syncAssignments('input_recording_policies', 'recording_policy_id', String(created.id), recordingPolicyIds);
+    await this.syncAssignments('input_audio_feed_profiles', 'audio_feed_profile_id', String(created.id), audioFeedProfileIds);
     return this.findById(organizationId, String(created.id));
   }
 
@@ -263,6 +331,9 @@ export class InputRepository {
       streamProfileId: string | null;
       recordingPolicyId: string | null;
       audioFeedProfileId: string | null;
+      streamProfileIds: string[];
+      recordingPolicyIds: string[];
+      audioFeedProfileIds: string[];
     }>
   ) {
     const fields: string[] = [];
@@ -287,21 +358,42 @@ export class InputRepository {
     if (data.audioFeedProfileId !== undefined) {
       setField('audio_feed_profile_id', data.audioFeedProfileId);
     }
+    if (data.streamProfileIds !== undefined) {
+      setField('stream_profile_id', data.streamProfileIds[0] ?? null);
+    }
+    if (data.recordingPolicyIds !== undefined) {
+      setField('recording_policy_id', data.recordingPolicyIds[0] ?? null);
+    }
+    if (data.audioFeedProfileIds !== undefined) {
+      setField('audio_feed_profile_id', data.audioFeedProfileIds[0] ?? null);
+    }
 
-    if (fields.length === 0) {
+    const hasAssignmentChanges =
+      data.streamProfileIds !== undefined ||
+      data.recordingPolicyIds !== undefined ||
+      data.audioFeedProfileIds !== undefined;
+
+    if (fields.length === 0 && !hasAssignmentChanges) {
       return this.findById(organizationId, id);
     }
 
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-
-    const result = await this.db.query(
-      `UPDATE inputs SET ${fields.join(', ')}
-       WHERE organization_id = $1 AND id = $2
-       RETURNING id`,
-      values
-    );
-    if (!result.rows[0]) return null;
-    return this.findById(organizationId, String(result.rows[0].id));
+    if (fields.length > 0) {
+      fields.push('updated_at = CURRENT_TIMESTAMP');
+      const result = await this.db.query(
+        `UPDATE inputs SET ${fields.join(', ')}
+         WHERE organization_id = $1 AND id = $2
+         RETURNING id`,
+        values
+      );
+      if (!result.rows[0]) return null;
+    } else {
+      const existing = await this.findById(organizationId, id);
+      if (!existing) return null;
+    }
+    await this.syncAssignments('input_stream_profiles', 'stream_profile_id', id, data.streamProfileIds);
+    await this.syncAssignments('input_recording_policies', 'recording_policy_id', id, data.recordingPolicyIds);
+    await this.syncAssignments('input_audio_feed_profiles', 'audio_feed_profile_id', id, data.audioFeedProfileIds);
+    return this.findById(organizationId, id);
   }
 
   async delete(organizationId: string, id: string) {
@@ -627,6 +719,14 @@ export class DomainBlockRepository {
     return result.rows[0] ? mapDomainBlock(result.rows[0]) : null;
   }
 
+  async findBySlug(organizationId: string, slug: string) {
+    const result = await this.db.query(
+      'SELECT * FROM domain_blocks WHERE organization_id = $1 AND slug = $2',
+      [organizationId, slug]
+    );
+    return result.rows[0] ? mapDomainBlock(result.rows[0]) : null;
+  }
+
   async create(
     organizationId: string,
     data: {
@@ -662,6 +762,463 @@ export class DomainBlockRepository {
       [organizationId]
     );
     return result.rows.map(mapDomainBlock);
+  }
+
+  async update(
+    organizationId: string,
+    id: string,
+    data: Partial<{
+      name: string;
+      slug: string;
+      allowedDomains: string[];
+      branding: Record<string, unknown> | null;
+      playbackAccessPolicy: string;
+      tokenRequired: boolean;
+    }>
+  ) {
+    const fields: string[] = [];
+    const values: unknown[] = [organizationId, id];
+    let index = 3;
+
+    const setField = (column: string, value: unknown) => {
+      fields.push(`${column} = $${index}`);
+      values.push(value);
+      index += 1;
+    };
+
+    if (data.name !== undefined) setField('name', data.name);
+    if (data.slug !== undefined) setField('slug', data.slug);
+    if (data.allowedDomains !== undefined) setField('allowed_domains', data.allowedDomains);
+    if (data.branding !== undefined) {
+      setField('branding', data.branding ? JSON.stringify(data.branding) : null);
+    }
+    if (data.playbackAccessPolicy !== undefined) {
+      setField('playback_access_policy', data.playbackAccessPolicy);
+    }
+    if (data.tokenRequired !== undefined) setField('token_required', data.tokenRequired);
+
+    if (fields.length === 0) {
+      return this.findById(organizationId, id);
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    const result = await this.db.query(
+      `UPDATE domain_blocks SET ${fields.join(', ')}
+       WHERE organization_id = $1 AND id = $2
+       RETURNING *`,
+      values
+    );
+    return result.rows[0] ? mapDomainBlock(result.rows[0]) : null;
+  }
+
+  async delete(organizationId: string, id: string) {
+    const result = await this.db.query(
+      'DELETE FROM domain_blocks WHERE organization_id = $1 AND id = $2 RETURNING id',
+      [organizationId, id]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+}
+
+export class UserRepository {
+  constructor(private readonly db: Database) {}
+
+  async list(organizationId: string, params: PaginationParams = {}) {
+    const { safePage, safeSize, offset } = paginationClause(params.page, params.pageSize);
+    const count = await this.db.query(
+      'SELECT COUNT(*)::int AS total FROM users WHERE organization_id = $1',
+      [organizationId]
+    );
+    const total = count.rows[0].total as number;
+    const result = await this.db.query(
+      `SELECT * FROM users WHERE organization_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [organizationId, safeSize, offset]
+    );
+    return {
+      items: result.rows.map(mapUser),
+      total,
+      page: safePage,
+      pageSize: safeSize,
+      hasMore: offset + result.rows.length < total,
+    } satisfies PaginatedResult<ReturnType<typeof mapUser>>;
+  }
+
+  async findById(organizationId: string, id: string) {
+    const result = await this.db.query(
+      'SELECT * FROM users WHERE organization_id = $1 AND id = $2',
+      [organizationId, id]
+    );
+    return result.rows[0] ? mapUser(result.rows[0]) : null;
+  }
+
+  async findByEmail(organizationId: string, email: string) {
+    const result = await this.db.query(
+      'SELECT * FROM users WHERE organization_id = $1 AND LOWER(email) = LOWER($2)',
+      [organizationId, email]
+    );
+    return result.rows[0] ? mapUser(result.rows[0]) : null;
+  }
+
+  async findByEmailWithPasswordHash(organizationId: string, email: string) {
+    const result = await this.db.query(
+      'SELECT * FROM users WHERE organization_id = $1 AND LOWER(email) = LOWER($2)',
+      [organizationId, email]
+    );
+    return (result.rows[0] as
+      | {
+          id: string;
+          organization_id: string;
+          email: string;
+          display_name: string | null;
+          password_hash: string | null;
+          role: 'super-admin' | 'admin' | 'manager';
+          is_active: boolean;
+        }
+      | undefined) ?? null;
+  }
+
+  async create(
+    organizationId: string,
+    data: {
+      email: string;
+      displayName?: string;
+      passwordHash?: string;
+      role?: 'super-admin' | 'admin' | 'manager';
+      isActive?: boolean;
+    }
+  ) {
+    const result = await this.db.query(
+      `INSERT INTO users (
+        organization_id, email, display_name, password_hash, role, is_active
+      ) VALUES ($1,$2,$3,$4,$5,$6)
+      RETURNING *`,
+      [
+        organizationId,
+        data.email,
+        data.displayName ?? null,
+        data.passwordHash ?? null,
+        data.role ?? 'manager',
+        data.isActive ?? true,
+      ]
+    );
+    return mapUser(result.rows[0]);
+  }
+
+  async update(
+    organizationId: string,
+    id: string,
+    data: Partial<{
+      email: string;
+      displayName: string | null;
+      passwordHash: string | null;
+      role: 'super-admin' | 'admin' | 'manager';
+      isActive: boolean;
+    }>
+  ) {
+    const fields: string[] = [];
+    const values: unknown[] = [organizationId, id];
+    let index = 3;
+
+    const setField = (column: string, value: unknown) => {
+      fields.push(`${column} = $${index}`);
+      values.push(value);
+      index += 1;
+    };
+
+    if (data.email !== undefined) setField('email', data.email);
+    if (data.displayName !== undefined) setField('display_name', data.displayName);
+    if (data.passwordHash !== undefined) setField('password_hash', data.passwordHash);
+    if (data.role !== undefined) setField('role', data.role);
+    if (data.isActive !== undefined) setField('is_active', data.isActive);
+
+    if (fields.length === 0) {
+      return this.findById(organizationId, id);
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    const result = await this.db.query(
+      `UPDATE users SET ${fields.join(', ')}
+       WHERE organization_id = $1 AND id = $2
+       RETURNING *`,
+      values
+    );
+    return result.rows[0] ? mapUser(result.rows[0]) : null;
+  }
+
+  async delete(organizationId: string, id: string) {
+    const result = await this.db.query(
+      'DELETE FROM users WHERE organization_id = $1 AND id = $2 RETURNING id',
+      [organizationId, id]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+}
+
+export class VodRouteRepository {
+  constructor(private readonly db: Database) {}
+
+  async list(organizationId: string, params: PaginationParams = {}) {
+    const { safePage, safeSize, offset } = paginationClause(params.page, params.pageSize);
+    const count = await this.db.query(
+      'SELECT COUNT(*)::int AS total FROM vod_routes WHERE organization_id = $1',
+      [organizationId]
+    );
+    const total = count.rows[0].total as number;
+    const result = await this.db.query(
+      `SELECT * FROM vod_routes WHERE organization_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [organizationId, safeSize, offset]
+    );
+    return {
+      items: result.rows.map(mapVodRoute),
+      total,
+      page: safePage,
+      pageSize: safeSize,
+      hasMore: offset + result.rows.length < total,
+    } satisfies PaginatedResult<ReturnType<typeof mapVodRoute>>;
+  }
+
+  async listAll(organizationId: string) {
+    const result = await this.db.query(
+      'SELECT * FROM vod_routes WHERE organization_id = $1 ORDER BY name',
+      [organizationId]
+    );
+    return result.rows.map(mapVodRoute);
+  }
+
+  async findById(organizationId: string, id: string) {
+    const result = await this.db.query(
+      'SELECT * FROM vod_routes WHERE organization_id = $1 AND id = $2',
+      [organizationId, id]
+    );
+    return result.rows[0] ? mapVodRoute(result.rows[0]) : null;
+  }
+
+  async create(
+    organizationId: string,
+    data: {
+      name: string;
+      enabled?: boolean;
+      requestDomain?: string;
+      publicPath: string;
+      deliveryType: 'hls' | 'progressive';
+      sourceType: 'storage-location' | 'remote-http';
+      storageLocationId?: string;
+      sourcePath: string;
+      domainBlockId?: string;
+      allowDirectAccess?: boolean;
+      generateIframePlaylist?: boolean;
+    }
+  ) {
+    const result = await this.db.query(
+      `INSERT INTO vod_routes (
+        organization_id, name, enabled, request_domain, public_path,
+        delivery_type, source_type, storage_location_id, source_path,
+        domain_block_id, allow_direct_access, generate_iframe_playlist
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING *`,
+      [
+        organizationId,
+        data.name,
+        data.enabled ?? true,
+        data.requestDomain ?? null,
+        data.publicPath,
+        data.deliveryType,
+        data.sourceType,
+        data.storageLocationId ?? null,
+        data.sourcePath,
+        data.domainBlockId ?? null,
+        data.allowDirectAccess ?? false,
+        data.generateIframePlaylist ?? false,
+      ]
+    );
+    return mapVodRoute(result.rows[0]);
+  }
+
+  async update(
+    organizationId: string,
+    id: string,
+    data: Partial<{
+      name: string;
+      enabled: boolean;
+      requestDomain: string | null;
+      publicPath: string;
+      deliveryType: 'hls' | 'progressive';
+      sourceType: 'storage-location' | 'remote-http';
+      storageLocationId: string | null;
+      sourcePath: string;
+      domainBlockId: string | null;
+      allowDirectAccess: boolean;
+      generateIframePlaylist: boolean;
+    }>
+  ) {
+    const fields: string[] = [];
+    const values: unknown[] = [organizationId, id];
+    let index = 3;
+
+    const setField = (column: string, value: unknown) => {
+      fields.push(`${column} = $${index}`);
+      values.push(value);
+      index += 1;
+    };
+
+    if (data.name !== undefined) setField('name', data.name);
+    if (data.enabled !== undefined) setField('enabled', data.enabled);
+    if (data.requestDomain !== undefined) setField('request_domain', data.requestDomain);
+    if (data.publicPath !== undefined) setField('public_path', data.publicPath);
+    if (data.deliveryType !== undefined) setField('delivery_type', data.deliveryType);
+    if (data.sourceType !== undefined) setField('source_type', data.sourceType);
+    if (data.storageLocationId !== undefined) {
+      setField('storage_location_id', data.storageLocationId);
+    }
+    if (data.sourcePath !== undefined) setField('source_path', data.sourcePath);
+    if (data.domainBlockId !== undefined) setField('domain_block_id', data.domainBlockId);
+    if (data.allowDirectAccess !== undefined) {
+      setField('allow_direct_access', data.allowDirectAccess);
+    }
+    if (data.generateIframePlaylist !== undefined) {
+      setField('generate_iframe_playlist', data.generateIframePlaylist);
+    }
+
+    if (fields.length === 0) {
+      return this.findById(organizationId, id);
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    const result = await this.db.query(
+      `UPDATE vod_routes SET ${fields.join(', ')}
+       WHERE organization_id = $1 AND id = $2
+       RETURNING *`,
+      values
+    );
+    return result.rows[0] ? mapVodRoute(result.rows[0]) : null;
+  }
+
+  async delete(organizationId: string, id: string) {
+    const result = await this.db.query(
+      'DELETE FROM vod_routes WHERE organization_id = $1 AND id = $2 RETURNING id',
+      [organizationId, id]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+}
+
+export class DvrWatchlistRepository {
+  constructor(private readonly db: Database) {}
+
+  async list(organizationId: string, params: PaginationParams = {}) {
+    const { safePage, safeSize, offset } = paginationClause(params.page, params.pageSize);
+    const count = await this.db.query(
+      'SELECT COUNT(*)::int AS total FROM dvr_watchlist_entries WHERE organization_id = $1',
+      [organizationId]
+    );
+    const total = count.rows[0].total as number;
+    const result = await this.db.query(
+      `SELECT * FROM dvr_watchlist_entries WHERE organization_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [organizationId, safeSize, offset]
+    );
+    return {
+      items: result.rows.map(mapDvrWatchlistEntry),
+      total,
+      page: safePage,
+      pageSize: safeSize,
+      hasMore: offset + result.rows.length < total,
+    } satisfies PaginatedResult<ReturnType<typeof mapDvrWatchlistEntry>>;
+  }
+
+  async findById(organizationId: string, id: string) {
+    const result = await this.db.query(
+      'SELECT * FROM dvr_watchlist_entries WHERE organization_id = $1 AND id = $2',
+      [organizationId, id]
+    );
+    return result.rows[0] ? mapDvrWatchlistEntry(result.rows[0]) : null;
+  }
+
+  async create(
+    organizationId: string,
+    data: {
+      applicationName: string;
+      streamPattern?: string;
+      retentionHours?: number;
+      storageLocationId: string;
+      enabled?: boolean;
+    }
+  ) {
+    const application = await this.db.query(
+      'SELECT id, app_name FROM applications WHERE organization_id = $1 AND app_name = $2',
+      [organizationId, data.applicationName]
+    );
+    const applicationRow = application.rows[0] as
+      | { id: string; app_name: string }
+      | undefined;
+    const result = await this.db.query(
+      `INSERT INTO dvr_watchlist_entries (
+        organization_id, application_id, application_name, stream_pattern,
+        retention_hours, storage_location_id, enabled
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+      RETURNING *`,
+      [
+        organizationId,
+        applicationRow?.id ?? null,
+        data.applicationName,
+        data.streamPattern ?? '*',
+        data.retentionHours ?? 24,
+        data.storageLocationId,
+        data.enabled ?? true,
+      ]
+    );
+    return mapDvrWatchlistEntry(result.rows[0]);
+  }
+
+  async update(
+    organizationId: string,
+    id: string,
+    data: Partial<{
+      streamPattern: string;
+      retentionHours: number;
+      storageLocationId: string;
+      enabled: boolean;
+    }>
+  ) {
+    const fields: string[] = [];
+    const values: unknown[] = [organizationId, id];
+    let index = 3;
+
+    const setField = (column: string, value: unknown) => {
+      fields.push(`${column} = $${index}`);
+      values.push(value);
+      index += 1;
+    };
+
+    if (data.streamPattern !== undefined) setField('stream_pattern', data.streamPattern);
+    if (data.retentionHours !== undefined) setField('retention_hours', data.retentionHours);
+    if (data.storageLocationId !== undefined) {
+      setField('storage_location_id', data.storageLocationId);
+    }
+    if (data.enabled !== undefined) setField('enabled', data.enabled);
+
+    if (fields.length === 0) {
+      return this.findById(organizationId, id);
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    const result = await this.db.query(
+      `UPDATE dvr_watchlist_entries SET ${fields.join(', ')}
+       WHERE organization_id = $1 AND id = $2
+       RETURNING *`,
+      values
+    );
+    return result.rows[0] ? mapDvrWatchlistEntry(result.rows[0]) : null;
+  }
+
+  async delete(organizationId: string, id: string) {
+    const result = await this.db.query(
+      'DELETE FROM dvr_watchlist_entries WHERE organization_id = $1 AND id = $2 RETURNING id',
+      [organizationId, id]
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 }
 
@@ -888,6 +1445,16 @@ export class LiveSessionRepository {
   }
 }
 
+const RECORDING_ASSET_CONTEXT_FROM = `
+  FROM recording_assets ra
+  INNER JOIN live_sessions ls
+    ON ls.id = ra.live_session_id AND ls.organization_id = ra.organization_id
+  INNER JOIN inputs i ON i.id = ls.input_id AND i.organization_id = ra.organization_id
+  LEFT JOIN applications app ON app.id = i.application_id AND app.organization_id = ra.organization_id
+  LEFT JOIN recording_policies rp
+    ON rp.id = ra.recording_policy_id AND rp.organization_id = ra.organization_id
+`;
+
 export class RecordingAssetRepository {
   constructor(private readonly db: Database) {}
 
@@ -912,12 +1479,58 @@ export class RecordingAssetRepository {
     };
   }
 
+  async listWithContext(organizationId: string, params: PaginationParams = {}) {
+    const { safePage, safeSize, offset } = paginationClause(params.page, params.pageSize);
+    const count = await this.db.query(
+      'SELECT COUNT(*)::int AS total FROM recording_assets WHERE organization_id = $1',
+      [organizationId]
+    );
+    const total = count.rows[0].total as number;
+    const result = await this.db.query(
+      `SELECT ra.*,
+        i.id AS input_id,
+        i.name AS input_name,
+        i.stream_key,
+        app.id AS application_id,
+        app.name AS application_name,
+        rp.name AS recording_policy_name
+      ${RECORDING_ASSET_CONTEXT_FROM}
+      WHERE ra.organization_id = $1
+      ORDER BY ra.started_at DESC
+      LIMIT $2 OFFSET $3`,
+      [organizationId, safeSize, offset]
+    );
+    return {
+      items: result.rows.map(mapRecordingAssetWithContext),
+      total,
+      page: safePage,
+      pageSize: safeSize,
+      hasMore: offset + result.rows.length < total,
+    };
+  }
+
   async findById(organizationId: string, id: string) {
     const result = await this.db.query(
       'SELECT * FROM recording_assets WHERE organization_id = $1 AND id = $2',
       [organizationId, id]
     );
     return result.rows[0] ? mapRecordingAsset(result.rows[0]) : null;
+  }
+
+  async findByIdWithContext(organizationId: string, id: string) {
+    const result = await this.db.query(
+      `SELECT ra.*,
+        i.id AS input_id,
+        i.name AS input_name,
+        i.stream_key,
+        app.id AS application_id,
+        app.name AS application_name,
+        rp.name AS recording_policy_name
+      ${RECORDING_ASSET_CONTEXT_FROM}
+      WHERE ra.organization_id = $1 AND ra.id = $2`,
+      [organizationId, id]
+    );
+    return result.rows[0] ? mapRecordingAssetWithContext(result.rows[0]) : null;
   }
 
   async findActiveBySessionId(organizationId: string, liveSessionId: string) {
@@ -928,6 +1541,16 @@ export class RecordingAssetRepository {
       [organizationId, liveSessionId]
     );
     return result.rows[0] ? mapRecordingAsset(result.rows[0]) : null;
+  }
+
+  async listActiveBySessionId(organizationId: string, liveSessionId: string) {
+    const result = await this.db.query(
+      `SELECT * FROM recording_assets
+       WHERE organization_id = $1 AND live_session_id = $2 AND status = 'recording'
+       ORDER BY started_at DESC`,
+      [organizationId, liveSessionId]
+    );
+    return result.rows.map(mapRecordingAsset);
   }
 
   async create(params: {
@@ -1072,14 +1695,11 @@ export class GeneratedAudioAssetRepository {
   constructor(private readonly db: Database) {}
 
   private buildDedupeKey(params: {
-    recordingAssetId?: string;
     liveSessionId: string;
     audioFeedProfileId: string;
     codec: string;
-    objectKey: string;
   }) {
-    const scope = params.recordingAssetId ? `recording:${params.recordingAssetId}` : `session:${params.liveSessionId}`;
-    return `${scope}:${params.audioFeedProfileId}:${params.codec}:${params.objectKey}`;
+    return `${params.liveSessionId}:${params.audioFeedProfileId}:${params.codec}`;
   }
 
   async findById(organizationId: string, id: string) {
@@ -1625,14 +2245,217 @@ export class GatewayConfigRepository {
   }
 }
 
+export class UserAccessRepository {
+  constructor(private readonly db: Database) {}
+
+  async listApplicationIds(organizationId: string, userId: string) {
+    const result = await this.db.query(
+      `SELECT application_id::text AS id
+       FROM user_application_assignments
+       WHERE organization_id = $1 AND user_id = $2
+       ORDER BY created_at`,
+      [organizationId, userId]
+    );
+    return result.rows.map((row: { id: string }) => String(row.id));
+  }
+
+  async listRecordingPolicyIds(organizationId: string, userId: string) {
+    const result = await this.db.query(
+      `SELECT recording_policy_id::text AS id
+       FROM user_recording_policy_assignments
+       WHERE organization_id = $1 AND user_id = $2
+       ORDER BY created_at`,
+      [organizationId, userId]
+    );
+    return result.rows.map((row: { id: string }) => String(row.id));
+  }
+
+  async listVodRouteIds(organizationId: string, userId: string) {
+    const result = await this.db.query(
+      `SELECT vod_route_id::text AS id
+       FROM user_vod_route_assignments
+       WHERE organization_id = $1 AND user_id = $2
+       ORDER BY created_at`,
+      [organizationId, userId]
+    );
+    return result.rows.map((row: { id: string }) => String(row.id));
+  }
+
+  async listDomainBlockIds(organizationId: string, userId: string) {
+    const result = await this.db.query(
+      `SELECT domain_block_id::text AS id
+       FROM user_domain_block_assignments
+       WHERE organization_id = $1 AND user_id = $2
+       ORDER BY created_at`,
+      [organizationId, userId]
+    );
+    return result.rows.map((row: { id: string }) => String(row.id));
+  }
+
+  async listStorageLocationIds(organizationId: string, userId: string) {
+    const result = await this.db.query(
+      `SELECT storage_location_id::text AS id
+       FROM user_storage_location_assignments
+       WHERE organization_id = $1 AND user_id = $2
+       ORDER BY created_at`,
+      [organizationId, userId]
+    );
+    return result.rows.map((row: { id: string }) => String(row.id));
+  }
+
+  private async assertIdsInOrg(
+    table:
+      | 'applications'
+      | 'recording_policies'
+      | 'vod_routes'
+      | 'domain_blocks'
+      | 'storage_locations',
+    organizationId: string,
+    ids: string[]
+  ) {
+    if (ids.length === 0) return;
+    const result = await this.db.query(
+      `SELECT id::text FROM ${table} WHERE organization_id = $1 AND id = ANY($2::uuid[])`,
+      [organizationId, ids]
+    );
+    if (result.rows.length !== ids.length) {
+      throw new Error(`One or more ${table} ids are invalid for this organization`);
+    }
+  }
+
+  async setApplicationIds(organizationId: string, userId: string, applicationIds: string[]) {
+    await this.assertIdsInOrg('applications', organizationId, applicationIds);
+    await this.db.query('BEGIN');
+    try {
+      await this.db.query(
+        'DELETE FROM user_application_assignments WHERE organization_id = $1 AND user_id = $2',
+        [organizationId, userId]
+      );
+      for (const applicationId of applicationIds) {
+        await this.db.query(
+          `INSERT INTO user_application_assignments (user_id, application_id, organization_id)
+           VALUES ($1, $2, $3)`,
+          [userId, applicationId, organizationId]
+        );
+      }
+      await this.db.query('COMMIT');
+    } catch (error) {
+      await this.db.query('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async setRecordingPolicyIds(organizationId: string, userId: string, policyIds: string[]) {
+    await this.assertIdsInOrg('recording_policies', organizationId, policyIds);
+    await this.db.query('BEGIN');
+    try {
+      await this.db.query(
+        'DELETE FROM user_recording_policy_assignments WHERE organization_id = $1 AND user_id = $2',
+        [organizationId, userId]
+      );
+      for (const policyId of policyIds) {
+        await this.db.query(
+          `INSERT INTO user_recording_policy_assignments (user_id, recording_policy_id, organization_id)
+           VALUES ($1, $2, $3)`,
+          [userId, policyId, organizationId]
+        );
+      }
+      await this.db.query('COMMIT');
+    } catch (error) {
+      await this.db.query('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async setVodRouteIds(organizationId: string, userId: string, vodRouteIds: string[]) {
+    await this.assertIdsInOrg('vod_routes', organizationId, vodRouteIds);
+    await this.db.query('BEGIN');
+    try {
+      await this.db.query(
+        'DELETE FROM user_vod_route_assignments WHERE organization_id = $1 AND user_id = $2',
+        [organizationId, userId]
+      );
+      for (const vodRouteId of vodRouteIds) {
+        await this.db.query(
+          `INSERT INTO user_vod_route_assignments (user_id, vod_route_id, organization_id)
+           VALUES ($1, $2, $3)`,
+          [userId, vodRouteId, organizationId]
+        );
+      }
+      await this.db.query('COMMIT');
+    } catch (error) {
+      await this.db.query('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async setDomainBlockIds(organizationId: string, userId: string, domainBlockIds: string[]) {
+    await this.assertIdsInOrg('domain_blocks', organizationId, domainBlockIds);
+    await this.db.query('BEGIN');
+    try {
+      await this.db.query(
+        'DELETE FROM user_domain_block_assignments WHERE organization_id = $1 AND user_id = $2',
+        [organizationId, userId]
+      );
+      for (const domainBlockId of domainBlockIds) {
+        await this.db.query(
+          `INSERT INTO user_domain_block_assignments (user_id, domain_block_id, organization_id)
+           VALUES ($1, $2, $3)`,
+          [userId, domainBlockId, organizationId]
+        );
+      }
+      await this.db.query('COMMIT');
+    } catch (error) {
+      await this.db.query('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async setStorageLocationIds(organizationId: string, userId: string, storageLocationIds: string[]) {
+    await this.assertIdsInOrg('storage_locations', organizationId, storageLocationIds);
+    await this.db.query('BEGIN');
+    try {
+      await this.db.query(
+        'DELETE FROM user_storage_location_assignments WHERE organization_id = $1 AND user_id = $2',
+        [organizationId, userId]
+      );
+      for (const storageLocationId of storageLocationIds) {
+        await this.db.query(
+          `INSERT INTO user_storage_location_assignments (user_id, storage_location_id, organization_id)
+           VALUES ($1, $2, $3)`,
+          [userId, storageLocationId, organizationId]
+        );
+      }
+      await this.db.query('COMMIT');
+    } catch (error) {
+      await this.db.query('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async addRecordingPolicyAssignment(organizationId: string, userId: string, policyId: string) {
+    await this.assertIdsInOrg('recording_policies', organizationId, [policyId]);
+    await this.db.query(
+      `INSERT INTO user_recording_policy_assignments (user_id, recording_policy_id, organization_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [userId, policyId, organizationId]
+    );
+  }
+}
+
 export function createRepositories(db: Database) {
   return {
     organizations: new OrganizationRepository(db),
     applications: new ApplicationRepository(db),
     inputs: new InputRepository(db),
+    userAccess: new UserAccessRepository(db),
     outputs: new OutputRepository(db),
     routes: new RouteRepository(db),
     domainBlocks: new DomainBlockRepository(db),
+    users: new UserRepository(db),
+    vodRoutes: new VodRouteRepository(db),
+    dvrWatchlist: new DvrWatchlistRepository(db),
     storageLocations: new StorageLocationRepository(db),
     liveSessions: new LiveSessionRepository(db),
     recordingAssets: new RecordingAssetRepository(db),

@@ -11,6 +11,12 @@ import {
   provisionDefaultInputPlayback,
   teardownInputPlayback,
 } from '../lib/provision-input-playback';
+import {
+  assertApplicationAccess,
+  assertInputAccess,
+  assertRecordingPolicyAttachAccess,
+  getAccessScope,
+} from '../lib/access-control';
 
 const createInputSchema = z.object({
   applicationId: z.string().uuid(),
@@ -22,6 +28,9 @@ const createInputSchema = z.object({
   streamProfileId: z.union([z.string().uuid(), z.null()]).optional(),
   recordingPolicyId: z.union([z.string().uuid(), z.null()]).optional(),
   audioFeedProfileId: z.union([z.string().uuid(), z.null()]).optional(),
+  streamProfileIds: z.array(z.string().uuid()).optional(),
+  recordingPolicyIds: z.array(z.string().uuid()).optional(),
+  audioFeedProfileIds: z.array(z.string().uuid()).optional(),
 });
 
 const updateInputSchema = createInputSchema.partial();
@@ -29,15 +38,32 @@ const updateInputSchema = createInputSchema.partial();
 export function createInputsRouter(ctx: AppContext): Router {
   const router = Router();
 
+  const validateIds = async (
+    ids: string[] | undefined,
+    exists: (id: string) => Promise<unknown>,
+    message: string
+  ) => {
+    for (const id of ids ?? []) {
+      if (!(await exists(id))) {
+        throw new BadRequestError(message);
+      }
+    }
+  };
+
   router.get(
     '/',
     asyncHandler(async (req, res) => {
+      const scope = getAccessScope(req);
       const pagination = parsePagination(req);
       const applicationId =
         typeof req.query.applicationId === 'string' ? req.query.applicationId : undefined;
+      if (applicationId) {
+        assertApplicationAccess(scope, applicationId);
+      }
       const result = await ctx.repos.inputs.list(ctx.organizationId, {
         ...pagination,
         applicationId,
+        applicationIds: applicationId ? undefined : (scope.applicationIds ?? undefined),
       });
       res.json(result);
     })
@@ -46,6 +72,7 @@ export function createInputsRouter(ctx: AppContext): Router {
   router.get(
     '/:id/sessions',
     asyncHandler(async (req, res) => {
+      await assertInputAccess(ctx.organizationId, req.params.id, getAccessScope(req), ctx.repos);
       const input = await ctx.repos.inputs.findById(ctx.organizationId, req.params.id);
       if (!input) {
         throw new NotFoundError('Input not found');
@@ -63,6 +90,7 @@ export function createInputsRouter(ctx: AppContext): Router {
   router.get(
     '/:id',
     asyncHandler(async (req, res) => {
+      await assertInputAccess(ctx.organizationId, req.params.id, getAccessScope(req), ctx.repos);
       const input = await ctx.repos.inputs.findById(ctx.organizationId, req.params.id);
       if (!input) {
         throw new NotFoundError('Input not found');
@@ -74,36 +102,39 @@ export function createInputsRouter(ctx: AppContext): Router {
   router.post(
     '/',
     asyncHandler(async (req, res) => {
+      const scope = getAccessScope(req);
       const parsed = createInputSchema.safeParse(req.body);
       if (!parsed.success) {
         throw new BadRequestError(formatZodError(parsed.error));
       }
-      if (parsed.data.recordingPolicyId) {
-        const policy = await ctx.repos.recordingPolicies.findById(
-          ctx.organizationId,
-          parsed.data.recordingPolicyId
-        );
-        if (!policy) {
-          throw new BadRequestError('Recording policy not found');
-        }
-      }
-      if (parsed.data.streamProfileId) {
-        const profile = await ctx.repos.streamProfiles.findById(
-          ctx.organizationId,
-          parsed.data.streamProfileId
-        );
-        if (!profile) {
-          throw new BadRequestError('Stream profile not found');
-        }
-      }
-      if (parsed.data.audioFeedProfileId) {
-        const profile = await ctx.repos.audioFeedProfiles.findById(
-          ctx.organizationId,
-          parsed.data.audioFeedProfileId
-        );
-        if (!profile) {
-          throw new BadRequestError('Audio feed profile not found');
-        }
+      const recordingPolicyIds =
+        parsed.data.recordingPolicyIds ??
+        (parsed.data.recordingPolicyId ? [parsed.data.recordingPolicyId] : []);
+      const streamProfileIds =
+        parsed.data.streamProfileIds ??
+        (parsed.data.streamProfileId ? [parsed.data.streamProfileId] : []);
+      const audioFeedProfileIds =
+        parsed.data.audioFeedProfileIds ??
+        (parsed.data.audioFeedProfileId ? [parsed.data.audioFeedProfileId] : []);
+
+      await validateIds(
+        recordingPolicyIds,
+        (id) => ctx.repos.recordingPolicies.findById(ctx.organizationId, id),
+        'Recording policy not found'
+      );
+      await validateIds(
+        streamProfileIds,
+        (id) => ctx.repos.streamProfiles.findById(ctx.organizationId, id),
+        'Stream profile not found'
+      );
+      await validateIds(
+        audioFeedProfileIds,
+        (id) => ctx.repos.audioFeedProfiles.findById(ctx.organizationId, id),
+        'Audio feed profile not found'
+      );
+      assertApplicationAccess(scope, parsed.data.applicationId);
+      for (const policyId of recordingPolicyIds) {
+        assertRecordingPolicyAttachAccess(scope, policyId);
       }
       const application = await ctx.repos.applications.findById(
         ctx.organizationId,
@@ -119,9 +150,9 @@ export function createInputsRouter(ctx: AppContext): Router {
         ingestProtocol: parsed.data.ingestProtocol,
         enabled: parsed.data.enabled,
         sourceRestrictions: parsed.data.sourceRestrictions,
-        streamProfileId: parsed.data.streamProfileId ?? undefined,
-        recordingPolicyId: parsed.data.recordingPolicyId ?? undefined,
-        audioFeedProfileId: parsed.data.audioFeedProfileId ?? undefined,
+        streamProfileIds,
+        recordingPolicyIds,
+        audioFeedProfileIds,
       });
       if (!input) {
         throw new BadRequestError('Failed to create input');
@@ -139,38 +170,50 @@ export function createInputsRouter(ctx: AppContext): Router {
   router.patch(
     '/:id',
     asyncHandler(async (req, res) => {
+      const scope = getAccessScope(req);
+      await assertInputAccess(ctx.organizationId, req.params.id, scope, ctx.repos);
       const parsed = updateInputSchema.safeParse(req.body);
       if (!parsed.success) {
         throw new BadRequestError(formatZodError(parsed.error));
       }
-      if (parsed.data.recordingPolicyId) {
-        const policy = await ctx.repos.recordingPolicies.findById(
-          ctx.organizationId,
-          parsed.data.recordingPolicyId
-        );
-        if (!policy) {
-          throw new BadRequestError('Recording policy not found');
-        }
+      const recordingPolicyIds =
+        parsed.data.recordingPolicyIds ??
+        (parsed.data.recordingPolicyId ? [parsed.data.recordingPolicyId] : undefined);
+      const streamProfileIds =
+        parsed.data.streamProfileIds ??
+        (parsed.data.streamProfileId ? [parsed.data.streamProfileId] : undefined);
+      const audioFeedProfileIds =
+        parsed.data.audioFeedProfileIds ??
+        (parsed.data.audioFeedProfileId ? [parsed.data.audioFeedProfileId] : undefined);
+
+      await validateIds(
+        recordingPolicyIds,
+        (id) => ctx.repos.recordingPolicies.findById(ctx.organizationId, id),
+        'Recording policy not found'
+      );
+      await validateIds(
+        streamProfileIds,
+        (id) => ctx.repos.streamProfiles.findById(ctx.organizationId, id),
+        'Stream profile not found'
+      );
+      await validateIds(
+        audioFeedProfileIds,
+        (id) => ctx.repos.audioFeedProfiles.findById(ctx.organizationId, id),
+        'Audio feed profile not found'
+      );
+      if (parsed.data.applicationId) {
+        assertApplicationAccess(scope, parsed.data.applicationId);
       }
-      if (parsed.data.streamProfileId) {
-        const profile = await ctx.repos.streamProfiles.findById(
-          ctx.organizationId,
-          parsed.data.streamProfileId
-        );
-        if (!profile) {
-          throw new BadRequestError('Stream profile not found');
-        }
+      for (const policyId of recordingPolicyIds ?? []) {
+        assertRecordingPolicyAttachAccess(scope, policyId);
       }
-      if (parsed.data.audioFeedProfileId) {
-        const profile = await ctx.repos.audioFeedProfiles.findById(
-          ctx.organizationId,
-          parsed.data.audioFeedProfileId
-        );
-        if (!profile) {
-          throw new BadRequestError('Audio feed profile not found');
-        }
-      }
-      const input = await ctx.repos.inputs.update(ctx.organizationId, req.params.id, parsed.data);
+      const updateData = {
+        ...parsed.data,
+        ...(recordingPolicyIds !== undefined ? { recordingPolicyIds } : {}),
+        ...(streamProfileIds !== undefined ? { streamProfileIds } : {}),
+        ...(audioFeedProfileIds !== undefined ? { audioFeedProfileIds } : {}),
+      };
+      const input = await ctx.repos.inputs.update(ctx.organizationId, req.params.id, updateData);
       if (!input) {
         throw new NotFoundError('Input not found');
       }
@@ -182,6 +225,7 @@ export function createInputsRouter(ctx: AppContext): Router {
   router.delete(
     '/:id',
     asyncHandler(async (req, res) => {
+      await assertInputAccess(ctx.organizationId, req.params.id, getAccessScope(req), ctx.repos);
       const inputId = req.params.id;
       await teardownInputPlayback(ctx, inputId);
       const deleted = await ctx.repos.inputs.delete(ctx.organizationId, inputId);

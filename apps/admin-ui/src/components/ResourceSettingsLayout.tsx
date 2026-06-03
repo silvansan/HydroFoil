@@ -23,7 +23,7 @@ export const ResourceSettingsLayout: React.FC<ResourceSettingsLayoutProps> = ({
   <div className="space-y-6">
     <Link
       to={backTo}
-      className="inline-flex items-center gap-2 text-sm text-brand-400 hover:text-brand-300"
+      className="inline-flex items-center gap-2 text-sm hf-link hover:text-brand-300"
     >
       <ArrowLeft size={16} />
       {backLabel}

@@ -175,6 +175,42 @@ describe('RecordingPolicyResolver', () => {
 });
 
 describe('AudioFeedJobDerivation', () => {
+  it('schedules post-recording for all enabled profiles', () => {
+    const derivation = new AudioFeedJobDerivation();
+    const profile: AudioFeedProfile = {
+      ...baseEntity('70000000-0000-4000-8000-000000000071'),
+      organizationId: orgId,
+      name: 'Live MP3',
+      enabled: true,
+      outputCodecs: ['mp3'],
+      outputContainer: 'mp3',
+      storageLocationId: '60000000-0000-4000-8000-000000000060',
+      nameTemplate: '{input-name}.{ext}',
+      generateDuringLive: true,
+    };
+
+    expect(derivation.shouldGenerateAudio(profile, 'post-recording')).toBe(true);
+    expect(derivation.shouldGenerateAudio(profile, 'live')).toBe(true);
+  });
+
+  it('skips live DVR extraction for post-recording-only profiles', () => {
+    const derivation = new AudioFeedJobDerivation();
+    const profile: AudioFeedProfile = {
+      ...baseEntity('70000000-0000-4000-8000-000000000072'),
+      organizationId: orgId,
+      name: 'Post only',
+      enabled: true,
+      outputCodecs: ['mp3'],
+      outputContainer: 'mp3',
+      storageLocationId: '60000000-0000-4000-8000-000000000060',
+      nameTemplate: '{input-name}.{ext}',
+      generateDuringLive: false,
+    };
+
+    expect(derivation.shouldGenerateAudio(profile, 'live')).toBe(false);
+    expect(derivation.shouldGenerateAudio(profile, 'post-recording')).toBe(true);
+  });
+
   it('derives post-recording audio jobs when not generating during live', () => {
     const derivation = new AudioFeedJobDerivation();
     const profile: AudioFeedProfile = {
@@ -204,6 +240,35 @@ describe('AudioFeedJobDerivation', () => {
     expect(jobs[0]?.codec).toBe('mp3');
     expect(jobs[0]?.trigger).toBe('post-recording');
     expect(jobs[0]?.objectKey).toContain('media/');
+    expect(jobs[0]?.objectKey).toMatch(/\.mp3$/);
+  });
+
+  it('normalizes duplicate codecs and maps opus to ogg extension', () => {
+    const derivation = new AudioFeedJobDerivation();
+    const profile: AudioFeedProfile = {
+      ...baseEntity('70000000-0000-4000-8000-000000000073'),
+      organizationId: orgId,
+      name: 'Opus',
+      enabled: true,
+      outputCodecs: ['opus', 'opus'],
+      outputContainer: 'ogg',
+      storageLocationId: '60000000-0000-4000-8000-000000000060',
+      nameTemplate: '{input-name}.{ext}',
+      generateDuringLive: false,
+    };
+    const storage: Pick<StorageLocation, 'prefixPath'> = { prefixPath: 'media' };
+
+    const jobs = derivation.deriveJobs({
+      profile,
+      session: makeSession(),
+      input: makeInput(),
+      storage,
+      pathGenerator: new PathGenerator(),
+      trigger: 'post-recording',
+    });
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.objectKey).toMatch(/\.ogg$/);
   });
 });
 

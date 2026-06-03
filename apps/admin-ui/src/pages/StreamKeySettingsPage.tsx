@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Play, Zap } from 'lucide-react';
 import { Card, PageHeader, TextInput, Button } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
-import type { Input, LiveSession } from '../api/types';
+import type { Input, LiveSession, StreamProfile } from '../api/types';
+import { formatStreamProfileOption } from '../lib/stream-profile';
 import { Alert } from '../components/Alert';
 import { CopyableUrl } from '../components/CopyableUrl';
 import { DeleteButton } from '../components/DeleteButton';
@@ -13,7 +14,8 @@ import { StreamMediaActions } from '../components/StreamMediaActions';
 import { useStreamPreviewModal } from '../hooks/useStreamPreviewModal';
 import { useStreamMonitorModal } from '../hooks/useStreamMonitorModal';
 import { isSessionPublishing } from '../lib/session-status';
-import { rtmpIngestUrl, srtIngestUrl } from '../lib/stream';
+import { canPreviewHls } from '../lib/stream-media';
+import { ingestProtocolDisplayLabel, ingestUrlForInput } from '../lib/stream';
 
 type TabId = 'settings' | 'sessions';
 
@@ -29,12 +31,12 @@ const StreamKeySettingsPage: React.FC = () => {
   const [form, setForm] = React.useState({
     name: '',
     enabled: true,
-    recordingPolicyId: '',
-    streamProfileId: '',
-    audioFeedProfileId: '',
+    recordingPolicyIds: [] as string[],
+    streamProfileIds: [] as string[],
+    audioFeedProfileIds: [] as string[],
   });
   const [policies, setPolicies] = React.useState<Array<{ id: string; name: string }>>([]);
-  const [streamProfiles, setStreamProfiles] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [streamProfiles, setStreamProfiles] = React.useState<StreamProfile[]>([]);
   const [audioFeeds, setAudioFeeds] = React.useState<Array<{ id: string; name: string }>>([]);
   const { openPreview, previewModal } = useStreamPreviewModal();
   const { openMonitor, monitorModal } = useStreamMonitorModal();
@@ -52,16 +54,16 @@ const StreamKeySettingsPage: React.FC = () => {
     setForm({
       name: inputRes.name,
       enabled: inputRes.enabled,
-      recordingPolicyId: inputRes.recordingPolicyId ?? '',
-      streamProfileId: inputRes.streamProfileId ?? '',
-      audioFeedProfileId: inputRes.audioFeedProfileId ?? '',
+      recordingPolicyIds: inputRes.recordingPolicyIds ?? (inputRes.recordingPolicyId ? [inputRes.recordingPolicyId] : []),
+      streamProfileIds: inputRes.streamProfileIds ?? (inputRes.streamProfileId ? [inputRes.streamProfileId] : []),
+      audioFeedProfileIds: inputRes.audioFeedProfileIds ?? (inputRes.audioFeedProfileId ? [inputRes.audioFeedProfileId] : []),
     });
     setSessions(sessionsRes.items);
   }, [inputId]);
 
   React.useEffect(() => {
     Promise.all([
-      api.listRecordingPolicies(),
+      api.listRecordingPolicies('attach'),
       api.listStreamProfiles(),
       api.listAudioFeedProfiles(),
     ]).then(([policyRes, streamRes, audioRes]) => {
@@ -71,12 +73,7 @@ const StreamKeySettingsPage: React.FC = () => {
           name: p.name,
         }))
       );
-      setStreamProfiles(
-        (streamRes.items as Array<{ id: string; name: string }>).map((p) => ({
-          id: p.id,
-          name: p.name,
-        }))
-      );
+      setStreamProfiles(streamRes.items);
       setAudioFeeds(
         (audioRes.items as Array<{ id: string; name: string }>).map((p) => ({
           id: p.id,
@@ -103,9 +100,9 @@ const StreamKeySettingsPage: React.FC = () => {
       await api.updateInput(input.id, {
         name: form.name.trim(),
         enabled: form.enabled,
-        recordingPolicyId: form.recordingPolicyId || null,
-        streamProfileId: form.streamProfileId || null,
-        audioFeedProfileId: form.audioFeedProfileId || null,
+        recordingPolicyIds: form.recordingPolicyIds,
+        streamProfileIds: form.streamProfileIds,
+        audioFeedProfileIds: form.audioFeedProfileIds,
       });
       await load();
       notify('Stream key saved');
@@ -117,6 +114,56 @@ const StreamKeySettingsPage: React.FC = () => {
   };
 
   const activeSession = sessions.find((s) => isSessionPublishing(s.status));
+  const isPublishing = Boolean(activeSession && isSessionPublishing(activeSession.status));
+
+  const previewTarget = input
+    ? {
+        streamKey: input.streamKey,
+        gatewayApp: appName,
+        label: input.name,
+        status: activeSession?.status,
+      }
+    : null;
+  const toggleId = (field: 'recordingPolicyIds' | 'streamProfileIds' | 'audioFeedProfileIds', id: string) => {
+    setForm((current) => {
+      const values = current[field];
+      return {
+        ...current,
+        [field]: values.includes(id) ? values.filter((item) => item !== id) : [...values, id],
+      };
+    });
+  };
+
+  const renderPolicyList = (
+    title: string,
+    note: string,
+    items: Array<{ id: string; name: string }>,
+    field: 'recordingPolicyIds' | 'streamProfileIds' | 'audioFeedProfileIds'
+  ) => (
+    <div className="rounded-lg border border-slate-700/70 bg-slate-950/30 p-3">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
+        <p className="text-xs hf-muted">{note}</p>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-sm hf-muted">No templates configured.</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <label key={item.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-white/5">
+              <input
+                type="checkbox"
+                checked={form[field].includes(item.id)}
+                onChange={() => toggleId(field, item.id)}
+                className="rounded border-slate-600 text-brand-500"
+              />
+              <span>{item.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   if (!input && !error) {
     return <div className="hf-muted py-12 text-center">Loading stream key…</div>;
@@ -227,21 +274,56 @@ const StreamKeySettingsPage: React.FC = () => {
                   <p className="mt-1 font-mono text-sm text-brand-400">{input.streamKey}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-300">RTMP ingest</label>
+                  <label className="text-sm font-medium text-slate-300">
+                    {ingestProtocolDisplayLabel(input.ingestProtocol)}
+                  </label>
                   <CopyableUrl
-                    url={rtmpIngestUrl(input.streamKey, appName)}
+                    url={ingestUrlForInput(input, appName)}
                     className="mt-1 text-xs break-all max-w-full"
                     onCopied={notify}
                   />
+                  <p className="mt-1 text-xs hf-muted">
+                    Protocol: {input.ingestProtocol.toUpperCase()} — only this ingest URL is active for
+                    this input.
+                  </p>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-slate-300">SRT ingest</label>
-                  <CopyableUrl
-                    url={srtIngestUrl(input.streamKey, appName)}
-                    className="mt-1 text-xs break-all max-w-full"
-                    onCopied={notify}
-                  />
-                </div>
+                {previewTarget && (
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <Button
+                      variant="primary"
+                      onClick={() => openPreview(previewTarget)}
+                      disabled={!canPreviewHls(previewTarget)}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <Play size={16} className="fill-current" aria-hidden />
+                        Play
+                      </span>
+                    </Button>
+                    {isPublishing && (
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          openMonitor({
+                            streamKey: input.streamKey,
+                            gatewayApp: appName,
+                            label: input.name,
+                            status: activeSession!.status,
+                          })
+                        }
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <Zap size={16} aria-hidden />
+                          Monitor
+                        </span>
+                      </Button>
+                    )}
+                    {!isPublishing && (
+                      <p className="text-xs hf-muted w-full">
+                        Start publishing to this ingest URL to preview playback.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <label className="flex items-center gap-2 text-sm text-slate-300">
                   <input
                     type="checkbox"
@@ -269,67 +351,68 @@ const StreamKeySettingsPage: React.FC = () => {
 
               <Card className="p-6 space-y-4">
                 <h2 className="text-lg font-semibold text-slate-100">Policies</h2>
-                <label className="block text-sm">
-                  <span className="hf-muted mb-1 block">Recording policy</span>
-                  <select
-                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-200"
-                    value={form.recordingPolicyId}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, recordingPolicyId: e.target.value }))
-                    }
-                  >
-                    <option value="">Default (first enabled org policy)</option>
-                    {policies.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="hf-muted mb-1 block">Stream profile (ABR / transcode)</span>
-                  <select
-                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-200"
-                    value={form.streamProfileId}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, streamProfileId: e.target.value }))
-                    }
-                  >
-                    <option value="">None (passthrough at gateway)</option>
-                    {streamProfiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="hf-muted mb-1 block">Audio feed profile</span>
-                  <select
-                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-200"
-                    value={form.audioFeedProfileId}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, audioFeedProfileId: e.target.value }))
-                    }
-                  >
-                    <option value="">None</option>
-                    {audioFeeds.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {renderPolicyList(
+                  'Recording policies',
+                  'Select one or more destinations/retention rules for this stream key.',
+                  policies,
+                  'recordingPolicyIds'
+                )}
+                <div className="rounded-lg border border-slate-700/70 bg-slate-950/30 p-3">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-slate-200">Stream profiles / transcodes</h3>
+                    <p className="text-xs hf-muted">
+                      Select one or more profiles. Renditions merge into gateway desired config.{' '}
+                      <Link to="/stream-profiles" className="hf-link hover:underline">
+                        Manage profiles
+                      </Link>
+                    </p>
+                  </div>
+                  {streamProfiles.length === 0 ? (
+                    <p className="text-sm hf-muted">No stream profiles yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {streamProfiles.map((profile) => (
+                        <label
+                          key={profile.id}
+                          className="flex items-start gap-3 rounded-lg px-2 py-2 text-sm text-slate-200 hover:bg-white/5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={form.streamProfileIds.includes(profile.id)}
+                            onChange={() => toggleId('streamProfileIds', profile.id)}
+                            className="mt-1 rounded border-slate-600 text-brand-500"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <Link
+                              to={`/stream-profiles/${profile.id}`}
+                              className="font-medium text-slate-100 hf-link hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {profile.name}
+                            </Link>
+                            <span className="block text-xs hf-muted mt-0.5">
+                              {formatStreamProfileOption(profile)}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {renderPolicyList(
+                  'Audio feed profiles',
+                  'MP3/AAC/Opus derivatives. With recording enabled, audio is extracted after finalize; otherwise from DVR when the stream ends.',
+                  audioFeeds,
+                  'audioFeedProfileIds'
+                )}
                 <p className="text-xs hf-muted">
                   Manage templates under{' '}
                   <Link to="/recording-policies" className="text-brand-400 hover:underline">
                     Recording Policies
                   </Link>
                   ,{' '}
-                  <Link to="/stream-profiles" className="text-brand-400 hover:underline">
-                    Stream Profiles
-                  </Link>
-                  , and{' '}
+
+                  ,{' '}
                   <Link to="/audio-feed-profiles" className="text-brand-400 hover:underline">
                     Audio Feeds
                   </Link>

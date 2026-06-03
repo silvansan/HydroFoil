@@ -48,33 +48,83 @@ async function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
-async function resolveSourceFlv(
+async function probeDurationSec(filePath: string): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    const child = spawn(
+      'ffprobe',
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        filePath,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+    let stdout = '';
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.on('error', () => resolve(undefined));
+    child.on('exit', (code) => {
+      if (code !== 0) {
+        resolve(undefined);
+        return;
+      }
+      const value = Number.parseFloat(stdout.trim());
+      resolve(Number.isFinite(value) && value > 0 ? Math.round(value) : undefined);
+    });
+  });
+}
+
+function isRetriableSourceError(message: string): boolean {
+  return (
+    message.includes('SRS DVR source not found') ||
+    (message.includes('Recording asset') && message.includes('not found'))
+  );
+}
+
+async function resolveSourcePath(
   job: GenerateAudioAssetJob,
   repos: Repositories,
   storage: ObjectStorageService
-): Promise<string> {
-  if (job.trigger === 'post-recording' && job.recordingAssetId) {
-    const recording = await repos.recordingAssets.findById(
-      job.organizationId,
-      job.recordingAssetId
-    );
-    if (!recording) {
-      throw new Error(`Recording asset ${job.recordingAssetId} not found for audio extraction`);
+): Promise<{ localPath: string; tempDir: string | null }> {
+  const useRecording =
+    job.trigger === 'post-recording' ||
+    Boolean(job.recordingAssetId) ||
+    Boolean(job.recordingObjectKey);
+
+  if (useRecording) {
+    const recording =
+      job.recordingAssetId != null
+        ? await repos.recordingAssets.findById(job.organizationId, job.recordingAssetId)
+        : null;
+
+    const objectKey = job.recordingObjectKey ?? (recording ? String(recording.objectKey) : undefined);
+    const storageLocation = recording ? String(recording.storageLocation) : job.storageLocation;
+
+    if (!objectKey) {
+      throw new Error('Recording object key missing for audio extraction');
     }
 
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hf-audio-'));
-    const localPath = path.join(tmpDir, 'source.flv');
-    await storage.downloadFile(String(recording.storageLocation), String(recording.objectKey), localPath);
-    return localPath;
+    const ext = path.extname(objectKey) || '.flv';
+    const localPath = path.join(tmpDir, `source${ext}`);
+    await storage.downloadFile(storageLocation, objectKey, localPath);
+    return { localPath, tempDir: tmpDir };
   }
 
   const gatewayApp = job.gatewayApp ?? 'live';
   const streamKey = job.streamKey ?? '';
-  const localPath = await findSrsDvrFile(gatewayApp, streamKey);
+  const localPath = await findSrsDvrFile(gatewayApp, streamKey, job.sessionStartedAtMs);
   if (!localPath) {
     throw new Error(`SRS DVR source not found for ${gatewayApp}/${streamKey}`);
   }
-  return localPath;
+
+  const tempDir = localPath.includes(os.tmpdir()) ? path.dirname(localPath) : null;
+  return { localPath, tempDir };
 }
 
 export async function processGenerateAudioAsset(
@@ -83,7 +133,10 @@ export async function processGenerateAudioAsset(
   storage = new ObjectStorageService()
 ): Promise<{ success: boolean; data?: unknown }> {
   const data = job.data;
-  logger.info({ jobId: job.id, audioAssetId: data.audioAssetId, codec: data.codec }, 'Generating audio asset');
+  logger.info(
+    { jobId: job.id, audioAssetId: data.audioAssetId, codec: data.codec, trigger: data.trigger },
+    'Generating audio asset'
+  );
 
   const asset = await repos.generatedAudioAssets.findById(data.organizationId, data.audioAssetId);
   if (!asset) {
@@ -104,23 +157,23 @@ export async function processGenerateAudioAsset(
   let tempDir: string | null = null;
 
   try {
-    sourcePath = await resolveSourceFlv(data, repos, storage);
-    if (sourcePath.includes(os.tmpdir())) {
-      tempDir = path.dirname(sourcePath);
-    }
+    const resolved = await resolveSourcePath(data, repos, storage);
+    sourcePath = resolved.localPath;
+    tempDir = resolved.tempDir;
 
     const ext = outputExtension(data.codec, data.container);
     outputPath = path.join(tempDir ?? os.tmpdir(), `audio-${data.audioAssetId}.${ext}`);
     await runFfmpeg(ffmpegAudioArgs(sourcePath, outputPath, data.codec));
 
     const stat = await fs.stat(outputPath);
+    const probedDuration = await probeDurationSec(outputPath);
+    const durationSec = probedDuration ?? data.durationSec ?? asset.duration ?? 0;
     const contentType =
       ext === 'mp3' ? 'audio/mpeg' : ext === 'aac' ? 'audio/aac' : 'audio/ogg';
     const target = await storage.uploadFile(data.storageLocation, data.objectKey, outputPath, {
       'Content-Type': contentType,
     });
 
-    const durationSec = data.durationSec ?? asset.duration ?? 0;
     const finalized = await repos.generatedAudioAssets.complete(data.organizationId, data.audioAssetId, {
       fileSize: stat.size,
       duration: durationSec,
@@ -128,13 +181,25 @@ export async function processGenerateAudioAsset(
     });
 
     logger.info(
-      { audioAssetId: data.audioAssetId, bucket: target.bucket, objectKey: target.objectKey, bytes: stat.size },
+      {
+        audioAssetId: data.audioAssetId,
+        bucket: target.bucket,
+        objectKey: target.objectKey,
+        bytes: stat.size,
+        durationSec,
+        trigger: data.trigger,
+      },
       'Audio asset uploaded'
     );
 
     return { success: true, data: { asset: finalized } };
   } catch (err) {
-    await repos.generatedAudioAssets.markFailed(data.organizationId, data.audioAssetId);
+    const message = err instanceof Error ? err.message : String(err);
+    const attempts = job.opts.attempts ?? 1;
+    const isLastAttempt = job.attemptsMade >= attempts - 1;
+    if (isLastAttempt || !isRetriableSourceError(message)) {
+      await repos.generatedAudioAssets.markFailed(data.organizationId, data.audioAssetId);
+    }
     throw err;
   } finally {
     if (outputPath) await fs.unlink(outputPath).catch(() => undefined);

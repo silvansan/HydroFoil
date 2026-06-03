@@ -14,6 +14,34 @@ export async function getRecordingPolicyForInput(
   ctx: Pick<AppContext, 'db' | 'organizationId'>,
   input: { recordingPolicyId?: unknown }
 ): Promise<ResolvedRecordingPolicy | undefined> {
+  const policies = await getRecordingPoliciesForInput(ctx, input);
+  return policies[0];
+}
+
+/** Resolve all recording policies for an input, falling back to the org default when none are assigned. */
+export async function getRecordingPoliciesForInput(
+  ctx: Pick<AppContext, 'db' | 'organizationId'>,
+  input: { id?: unknown; recordingPolicyId?: unknown; recordingPolicyIds?: unknown }
+): Promise<ResolvedRecordingPolicy[]> {
+  const assignedIds = Array.isArray(input.recordingPolicyIds)
+    ? input.recordingPolicyIds.map(String).filter(Boolean)
+    : [];
+  if (input.recordingPolicyId && !assignedIds.includes(String(input.recordingPolicyId))) {
+    assignedIds.unshift(String(input.recordingPolicyId));
+  }
+
+  if (assignedIds.length > 0) {
+    const result = await ctx.db.query(
+      `SELECT rp.*, sl.bucket_name, sl.prefix_path AS storage_prefix
+       FROM recording_policies rp
+       JOIN storage_locations sl ON sl.id = rp.storage_location_id
+       WHERE rp.organization_id = $1 AND rp.id = ANY($2::uuid[]) AND rp.enabled = true
+       ORDER BY array_position($2::uuid[], rp.id)`,
+      [ctx.organizationId, assignedIds]
+    );
+    return result.rows as ResolvedRecordingPolicy[];
+  }
+
   if (input.recordingPolicyId) {
     const result = await ctx.db.query(
       `SELECT rp.*, sl.bucket_name, sl.prefix_path AS storage_prefix
@@ -23,10 +51,11 @@ export async function getRecordingPolicyForInput(
       [ctx.organizationId, input.recordingPolicyId]
     );
     if (result.rows[0]) {
-      return result.rows[0] as ResolvedRecordingPolicy;
+      return [result.rows[0] as ResolvedRecordingPolicy];
     }
   }
-  return getDefaultRecordingPolicy(ctx);
+  const defaultPolicy = await getDefaultRecordingPolicy(ctx);
+  return defaultPolicy ? [defaultPolicy] : [];
 }
 
 /** Resolve default recording policy + storage for the org (seeded in migration 005). */

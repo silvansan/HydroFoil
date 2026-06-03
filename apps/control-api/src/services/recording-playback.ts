@@ -26,6 +26,7 @@ export interface RecordingStorageRef {
 type StorageRepos = Pick<Repositories, 'storageLocations'>;
 
 interface ResolvedStorageObject {
+  kind: 'remote' | 'local';
   storage: StorageClient;
   bucket: string;
   objectKey: string;
@@ -47,7 +48,12 @@ export async function resolveStorageObject(
   const ref = parseStorageLocationRef(storageLocation);
   if (!ref) {
     const resolved = resolveMinioObject(storageLocation, objectKey);
-    return { storage: getStorageClient(), bucket: resolved.bucket, objectKey: resolved.objectKey };
+    return {
+      kind: 'remote',
+      storage: getStorageClient(),
+      bucket: resolved.bucket,
+      objectKey: resolved.objectKey,
+    };
   }
 
   if (!repos) {
@@ -63,6 +69,7 @@ export async function resolveStorageObject(
   }
 
   return {
+    kind: 'remote',
     storage: new StorageClient({
       endpoint: location.endpoint ?? config.minioEndpoint,
       accessKey:

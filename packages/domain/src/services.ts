@@ -289,13 +289,52 @@ export class RecordingPolicyResolver {
   }
 }
 
+/** Collect assigned audio feed profile IDs from an input (M2M list or legacy single field). */
+export function collectAudioFeedProfileIds(
+  input: Pick<Input, 'audioFeedProfileId' | 'audioFeedProfileIds'>
+): string[] {
+  if (input.audioFeedProfileIds && input.audioFeedProfileIds.length > 0) {
+    return [...new Set(input.audioFeedProfileIds.map(String))];
+  }
+  if (input.audioFeedProfileId) {
+    return [String(input.audioFeedProfileId)];
+  }
+  return [];
+}
+
+const AUDIO_CODEC_EXTENSIONS: Record<string, string> = {
+  mp3: 'mp3',
+  aac: 'aac',
+  opus: 'ogg',
+};
+
 export class AudioFeedJobDerivation {
+  /**
+   * Live (DVR) extraction runs on unpublish only when no recording finalize will run.
+   * Post-recording runs after finalize for all enabled profiles tied to the session.
+   */
   shouldGenerateAudio(profile: AudioFeedProfile | null, trigger: 'live' | 'post-recording'): boolean {
     if (!profile?.enabled) {
       return false;
     }
 
-    return trigger === 'live' ? profile.generateDuringLive : !profile.generateDuringLive;
+    if (trigger === 'post-recording') {
+      return true;
+    }
+
+    return profile.generateDuringLive;
+  }
+
+  normalizeOutputCodecs(profile: AudioFeedProfile): string[] {
+    const supported = new Set(Object.keys(AUDIO_CODEC_EXTENSIONS));
+    const unique = [...new Set(profile.outputCodecs.map((codec) => String(codec).toLowerCase()))];
+    return unique.filter((codec) => supported.has(codec));
+  }
+
+  fileExtensionForCodec(codec: string, container: AudioFeedProfile['outputContainer']): string {
+    if (container === 'ogg' || codec === 'opus') return 'ogg';
+    if (codec === 'aac' || container === 'aac') return 'aac';
+    return AUDIO_CODEC_EXTENSIONS[codec] ?? 'mp3';
   }
 
   deriveJobs(params: {
@@ -313,7 +352,8 @@ export class AudioFeedJobDerivation {
       return [];
     }
 
-    return profile.outputCodecs.map((codec) => ({
+    const codecs = this.normalizeOutputCodecs(profile);
+    return codecs.map((codec) => ({
       sessionId: session.id,
       recordingAssetId,
       codec,
@@ -325,7 +365,7 @@ export class AudioFeedJobDerivation {
         prefix: '{date}/audio/{input-name}',
         template: profile.nameTemplate,
         codec,
-        extension: codec,
+        extension: this.fileExtensionForCodec(codec, profile.outputContainer),
       }),
       trigger,
     }));
@@ -365,8 +405,28 @@ export class SRSGatewayConfigGenerator {
           return null;
         }
 
-        const profileId = resolvedRoute.streamProfileId ?? resolvedRoute.outputs[0]?.streamProfileId;
+        const assignedProfileIds =
+          input.streamProfileIds && input.streamProfileIds.length > 0
+            ? input.streamProfileIds
+            : [];
+        const profileId =
+          assignedProfileIds[0] ?? resolvedRoute.streamProfileId ?? resolvedRoute.outputs[0]?.streamProfileId;
         const profile = profileId ? profileById.get(profileId) : undefined;
+        const assignedProfiles = assignedProfileIds
+          .map((id) => profileById.get(id))
+          .filter((item): item is StreamProfile => Boolean(item));
+        const combinedProfile =
+          assignedProfiles.length > 1
+            ? {
+                ...assignedProfiles[0],
+                id: assignedProfiles.map((item) => item.id).join('+'),
+                name: assignedProfiles.map((item) => item.name).join(' + '),
+                mode: assignedProfiles.some((item) => item.mode === 'transcode')
+                  ? 'transcode'
+                  : assignedProfiles[0].mode,
+                renditions: assignedProfiles.flatMap((item) => item.renditions ?? []),
+              }
+            : profile;
 
         return {
           routeId: resolvedRoute.routeId,
@@ -377,14 +437,14 @@ export class SRSGatewayConfigGenerator {
           enabled: true,
           vhost: defaultVhost,
           app: input.application?.appName ?? defaultIngestApp,
-          profile: profile
+          profile: combinedProfile
             ? {
-                id: profile.id,
-                name: profile.name,
-                mode: profile.mode,
-                audioHandling: profile.audioHandling,
-                renditions: profile.renditions,
-                gatewayMapping: profile.gatewayMapping,
+                id: combinedProfile.id,
+                name: combinedProfile.name,
+                mode: combinedProfile.mode,
+                audioHandling: combinedProfile.audioHandling,
+                renditions: combinedProfile.renditions,
+                gatewayMapping: combinedProfile.gatewayMapping,
               }
             : undefined,
           forwards: resolvedRoute.outputs.map((output) => {

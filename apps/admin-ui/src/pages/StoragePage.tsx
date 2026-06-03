@@ -1,199 +1,262 @@
 import React from 'react';
-import { PageHeader, Card, Button, Modal, TextInput } from '@hydrofoil/ui-kit';
+import { Link } from 'react-router-dom';
+import { PageHeader, Card, Button, Modal } from '@hydrofoil/ui-kit';
+import { HardDrive, Plus, Search } from 'lucide-react';
 
 import { api } from '../api/client';
+import type { RecordingPolicy, StorageLocation } from '../api/types';
 import { Alert } from '../components/Alert';
 import { ClickableRow } from '../components/ClickableRow';
+import { FormError } from '../components/FormError';
+import { StorageLocationFormFields } from '../components/StorageLocationFormFields';
+import { StorageTypeBadge } from '../components/StorageTypeBadge';
+import { RecordingStorageLinkCard } from '../components/RecordingStorageLinkCard';
 import { useResourceList } from '../hooks/useResourceList';
-
-type StorageRow = {
-  id: string;
-  name: string;
-  type: string;
-  bucketName: string;
-  prefixPath: string;
-  isDefault: boolean;
-  endpoint?: string;
-  region?: string;
-  useSsl?: boolean;
-  publicEndpoint?: string;
-  pathStyle?: boolean;
-  hasCredentials?: boolean;
-};
-
-type StorageForm = {
-  name: string;
-  type: 'minio' | 's3';
-  bucketName: string;
-  prefixPath: string;
-  endpoint: string;
-  region: string;
-  useSsl: boolean;
-  publicEndpoint: string;
-  pathStyle: boolean;
-  accessKey: string;
-  secretKey: string;
-};
-
-const initialForm: StorageForm = {
-  name: '',
-  type: 'minio',
-  bucketName: 'hydrofoil',
-  prefixPath: 'media',
-  endpoint: '',
-  region: '',
-  useSsl: true,
-  publicEndpoint: '',
-  pathStyle: true,
-  accessKey: '',
-  secretKey: '',
-};
+import { canManageApplications, useAuth } from '../auth/AuthContext';
+import {
+  defaultStorageLocationForm,
+  storageLocationFormErrors,
+  type StorageLocationFormValues,
+} from '../lib/recording-storage';
 
 const StoragePage: React.FC = () => {
-  const { items, isLoading, error, reload } = useResourceList<StorageRow>(() =>
+  const { user } = useAuth();
+  const { items, isLoading, error, reload } = useResourceList<StorageLocation>(() =>
     api.listStorageLocations()
   );
+  const [policies, setPolicies] = React.useState<RecordingPolicy[]>([]);
+  const [search, setSearch] = React.useState('');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
-  const [form, setForm] = React.useState<StorageForm>(initialForm);
+  const [form, setForm] = React.useState<StorageLocationFormValues>(defaultStorageLocationForm());
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [showValidation, setShowValidation] = React.useState(false);
+
+  React.useEffect(() => {
+    api.listRecordingPolicies('manage').then((res) => setPolicies(res.items));
+  }, [items.length]);
+
+  const policiesByLocation = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const policy of policies) {
+      map.set(policy.storageLocationId, (map.get(policy.storageLocationId) ?? 0) + 1);
+    }
+    return map;
+  }, [policies]);
+
+  const filteredItems = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((row) => {
+      const haystack = [
+        row.name,
+        row.type,
+        row.bucketName,
+        row.prefixPath,
+        row.endpoint ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [items, search]);
+
+  const openCreate = () => {
+    setForm(defaultStorageLocationForm());
+    setSubmitError(null);
+    setShowValidation(false);
+    setIsModalOpen(true);
+  };
 
   const handleCreate = async () => {
+    setShowValidation(true);
+    const validationErrors = storageLocationFormErrors(form);
+    if (Object.keys(validationErrors).length > 0) {
+      setSubmitError('Fix the highlighted fields before creating.');
+      return;
+    }
+
+    setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const body = {
-        ...form,
+      await api.createStorageLocation({
+        name: form.name.trim(),
+        type: form.type,
+        bucketName: form.bucketName.trim(),
+        prefixPath: form.prefixPath.trim(),
         endpoint: form.endpoint.trim() || undefined,
         region: form.region.trim() || undefined,
         publicEndpoint: form.publicEndpoint.trim() || undefined,
         accessKey: form.accessKey.trim() || undefined,
         secretKey: form.secretKey || undefined,
+        useSsl: form.useSsl,
+        pathStyle: form.pathStyle,
         isDefault: items.length === 0,
-      };
-      await api.createStorageLocation(body);
-      setForm(initialForm);
+      });
       setIsModalOpen(false);
+      setForm(defaultStorageLocationForm());
       await reload();
+      const policyRes = await api.listRecordingPolicies('manage');
+      setPolicies(policyRes.items);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to create storage location');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  const validationErrors = showValidation ? storageLocationFormErrors(form) : undefined;
+  const canCreate =
+    Object.keys(storageLocationFormErrors(form)).length === 0 && form.name.trim().length > 0;
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Storage"
-        description="Local MinIO and remote S3-compatible buckets — click a row to browse"
+        description="Buckets for DVR recordings, VOD assets, and file browsing — connect recording policies to a location and folder."
         action={
-          <Button variant="primary" onClick={() => setIsModalOpen(true)}>
-            + New Location
-          </Button>
+          canManageApplications(user?.role) ? (
+            <Button variant="primary" onClick={openCreate}>
+              <Plus size={16} className="mr-1.5 inline" aria-hidden />
+              New location
+            </Button>
+          ) : undefined
         }
       />
 
       {error && <Alert>{error}</Alert>}
 
+      <RecordingStorageLinkCard
+        variant="storage"
+        storageCount={items.length}
+        policyCount={policies.length}
+      />
+
       <Card className="overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-700/50">
-          <h2 className="text-lg font-semibold text-slate-100">Storage locations</h2>
+        <div className="px-6 py-4 border-b border-slate-700/50 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-100">Storage locations</h2>
+            <p className="mt-1 text-sm hf-muted">
+              {items.length} location{items.length === 1 ? '' : 's'} — open one to browse files like
+              web-FTP.
+            </p>
+          </div>
+          {items.length > 0 && (
+            <div className="relative w-full sm:max-w-xs">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+                aria-hidden
+              />
+              <input
+                type="search"
+                className="hf-input pl-9"
+                placeholder="Search locations…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search storage locations"
+              />
+            </div>
+          )}
         </div>
         {isLoading ? (
           <div className="px-6 py-12 text-center hf-muted">Loading storage locations…</div>
         ) : items.length === 0 ? (
-          <div className="px-6 py-12 text-center hf-muted">No storage locations configured.</div>
+          <div className="px-6 py-14 text-center max-w-lg mx-auto">
+            <HardDrive className="h-10 w-10 text-slate-500 mx-auto mb-3" aria-hidden />
+            <p className="text-slate-200">No storage configured</p>
+            <p className="mt-2 text-sm hf-muted leading-relaxed">
+              Add MinIO for local/docker setups or S3 for cloud buckets. Recording policies pick a
+              folder inside these locations for DVR output.
+            </p>
+            {canManageApplications(user?.role) && (
+              <Button variant="primary" className="mt-6" onClick={openCreate}>
+                Add storage location
+              </Button>
+            )}
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="px-6 py-12 text-center hf-muted">No locations match &ldquo;{search}&rdquo;</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-slate-700/50 bg-slate-800/40">
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Name</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Location</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Type</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Bucket / prefix</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Recording policies</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Endpoint</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Bucket</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Prefix</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-400">Credentials</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((row) => (
-                  <ClickableRow key={row.id} to={`/storage/${row.id}`}>
-                    <td className="px-4 py-3 text-sm text-slate-200">{row.name}</td>
-                    <td className="px-4 py-3 text-sm text-slate-400">{row.type}</td>
-                    <td className="px-4 py-3 text-sm font-mono text-slate-400">{row.endpoint ?? 'env default'}</td>
-                    <td className="px-4 py-3 text-sm font-mono text-slate-400">{row.bucketName}</td>
-                    <td className="px-4 py-3 text-sm font-mono text-slate-400">{row.prefixPath}</td>
-                    <td className="px-4 py-3 text-sm text-slate-400">
-                      {row.hasCredentials ? 'Configured' : 'Uses env default'}
-                    </td>
-                  </ClickableRow>
-                ))}
+                {filteredItems.map((row) => {
+                  const policyCount = policiesByLocation.get(row.id) ?? 0;
+                  return (
+                    <ClickableRow key={row.id} to={`/storage/${row.id}`}>
+                      <td className="px-4 py-3">
+                        <span className="block text-sm font-medium text-slate-100">{row.name}</span>
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          {row.hasCredentials ? 'Custom credentials' : 'Environment defaults'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <StorageTypeBadge type={row.type} isDefault={row.isDefault} />
+                      </td>
+                      <td className="px-4 py-3 text-sm font-mono text-slate-400">
+                        {row.bucketName}
+                        <span className="block text-xs hf-muted">/{row.prefixPath}</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {policyCount > 0 ? (
+                          <Link
+                            to="/recording-policies"
+                            className="text-brand-400 hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {policyCount} polic{policyCount === 1 ? 'y' : 'ies'}
+                          </Link>
+                        ) : (
+                          <Link
+                            to={`/recording-policies?storage=${row.id}`}
+                            className="text-slate-500 hover:text-brand-400 text-xs"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            + Add policy
+                          </Link>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-mono text-slate-400 max-w-[12rem] truncate">
+                        {row.endpoint ?? 'env default'}
+                      </td>
+                    </ClickableRow>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </Card>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Storage Location">
-        <div className="space-y-4">
-          <TextInput label="Name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-300">Type</span>
-            <select
-              className="rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-2 text-slate-100"
-              value={form.type}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  type: e.target.value as StorageForm['type'],
-                  useSsl: e.target.value === 's3',
-                }))
-              }
-            >
-              <option value="minio">Local / MinIO-compatible</option>
-              <option value="s3">Remote S3-compatible</option>
-            </select>
-          </label>
-          <TextInput label="Bucket" value={form.bucketName} onChange={(e) => setForm((f) => ({ ...f, bucketName: e.target.value }))} />
-          <TextInput label="Prefix Path" value={form.prefixPath} onChange={(e) => setForm((f) => ({ ...f, prefixPath: e.target.value }))} />
-
-          <div className="rounded-lg border border-slate-700/70 bg-slate-950/40 p-3 space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-200">Provider connection</h3>
-              <p className="text-xs hf-muted mt-1">
-                For AWS use an S3 regional endpoint. For Hetzner or other S3-compatible providers,
-                use the provider endpoint and keep path-style enabled if required.
-              </p>
-            </div>
-            <TextInput
-              label="Endpoint"
-              placeholder={form.type === 's3' ? 's3.eu-central-1.amazonaws.com or provider endpoint' : 'optional, env default'}
-              value={form.endpoint}
-              onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))}
-            />
-            <TextInput label="Region" placeholder="optional, e.g. eu-central-1" value={form.region} onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))} />
-            <TextInput label="Public Endpoint" placeholder="optional browser/signed URL host" value={form.publicEndpoint} onChange={(e) => setForm((f) => ({ ...f, publicEndpoint: e.target.value }))} />
-            <div className="flex flex-wrap gap-4 text-sm text-slate-300">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={form.useSsl} onChange={(e) => setForm((f) => ({ ...f, useSsl: e.target.checked }))} />
-                Use SSL
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={form.pathStyle} onChange={(e) => setForm((f) => ({ ...f, pathStyle: e.target.checked }))} />
-                Path-style requests
-              </label>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 space-y-3">
-            <p className="text-xs text-amber-200">
-              Credentials are write-only in the UI. Existing keys are never shown after saving.
-            </p>
-            <TextInput label="Access Key" value={form.accessKey} onChange={(e) => setForm((f) => ({ ...f, accessKey: e.target.value }))} />
-            <TextInput label="Secret Key" type="password" value={form.secretKey} onChange={(e) => setForm((f) => ({ ...f, secretKey: e.target.value }))} />
-          </div>
-          {submitError && <p className="text-sm text-red-400">{submitError}</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleCreate}>Create</Button>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="New storage location"
+      >
+        <div className="max-w-lg max-h-[min(75vh,680px)] overflow-y-auto pr-1">
+          <StorageLocationFormFields
+            values={form}
+            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+            fieldErrors={validationErrors}
+          />
+          <FormError message={submitError} />
+          <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-slate-700/50 sticky bottom-0 bg-slate-900/95 pb-1">
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleCreate} disabled={!canCreate || isSubmitting}>
+              {isSubmitting ? 'Creating…' : 'Create location'}
+            </Button>
           </div>
         </div>
       </Modal>

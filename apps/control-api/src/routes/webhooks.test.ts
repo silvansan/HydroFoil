@@ -37,6 +37,7 @@ function createMockContext(overrides: Partial<AppContext> = {}) {
       },
       recordingAssets: {
         findActiveBySessionId: vi.fn().mockResolvedValue(null),
+                  listActiveBySessionId: vi.fn().mockResolvedValue([]),
       },
       routes: { listAll: vi.fn().mockResolvedValue([]) },
       outputs: { listAll: vi.fn().mockResolvedValue([]) },
@@ -166,6 +167,28 @@ describe('SRS webhook route', () => {
     });
   });
 
+  it('schedules DVR audio extraction on unpublish when no recording finalize will run', async () => {
+    const ctx = createMockContext();
+    vi.mocked(ctx.repos.liveSessions.findActiveByAppAndStreamKey).mockResolvedValueOnce(
+      session as any
+    );
+    vi.mocked(ctx.repos.recordingAssets.listActiveBySessionId).mockResolvedValueOnce([]);
+
+    await withWebhookServer(ctx, async (baseUrl) => {
+      const result = await postWebhook(baseUrl, {
+        action: 'on_unpublish',
+        app: 'live',
+        stream: 'main-key',
+      });
+
+      expect(result.status).toBe(200);
+      expect(ctx.audio.scheduleForSession).toHaveBeenCalledTimes(1);
+      expect(ctx.audio.scheduleForSession).toHaveBeenCalledWith(
+        expect.objectContaining({ trigger: 'live' })
+      );
+    });
+  });
+
   it('ends active sessions and schedules finalize work on unpublish', async () => {
     const activeRecording = {
       id: 'recording-1',
@@ -181,6 +204,9 @@ describe('SRS webhook route', () => {
     vi.mocked(ctx.repos.recordingAssets.findActiveBySessionId).mockResolvedValueOnce(
       activeRecording as any
     );
+              vi.mocked(ctx.repos.recordingAssets.listActiveBySessionId).mockResolvedValueOnce([
+                activeRecording as any,
+              ]);
 
     await withWebhookServer(ctx, async (baseUrl) => {
       const result = await postWebhook(baseUrl, {
@@ -191,7 +217,7 @@ describe('SRS webhook route', () => {
 
       expect(result.status).toBe(200);
       expect(result.body).toMatchObject({ code: 0, data: { sessionId: session.id } });
-      expect(ctx.audio.scheduleForSession).toHaveBeenCalledTimes(1);
+      expect(ctx.audio.scheduleForSession).not.toHaveBeenCalled();
       expect(ctx.recordings.scheduleFinalize).toHaveBeenCalledTimes(1);
       expect(ctx.repos.liveSessions.endSession).toHaveBeenCalledWith(session.id);
       expect(ctx.gateway.publish).toHaveBeenCalledTimes(1);

@@ -1,4 +1,8 @@
-import type { HydroFoilIframeEmbedOptions, HydroFoilScriptEmbedOptions } from './types';
+import type {
+  HydroFoilIframeEmbedOptions,
+  HydroFoilScriptEmbedOptions,
+  LiveEmbedPageUrlOptions,
+} from './types';
 
 const DEFAULT_HLS_CDN = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
 
@@ -47,15 +51,22 @@ export function buildHydroFoilIframeEmbed(options: HydroFoilIframeEmbedOptions):
 
 /** Build /embed URL query for live HLS on the same HydroFoil admin host. */
 export function buildLiveEmbedPageUrl(
-  streamKey: string,
+  streamKeyOrOptions: string | LiveEmbedPageUrlOptions,
   app = 'live',
   origin = ''
 ): string {
+  const options =
+    typeof streamKeyOrOptions === 'string'
+      ? { streamKey: streamKeyOrOptions, app, origin }
+      : streamKeyOrOptions;
   const params = new URLSearchParams({
-    app,
-    stream: streamKey,
+    app: options.app ?? 'live',
+    stream: options.streamKey,
     live: '1',
   });
-  const base = origin.replace(/\/$/, '');
+  if (options.token) {
+    params.set('token', options.token);
+  }
+  const base = (options.origin ?? '').replace(/\/$/, '');
   return `${base}/embed?${params.toString()}`;
 }

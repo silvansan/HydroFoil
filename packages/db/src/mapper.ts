@@ -1,5 +1,7 @@
 /** Map snake_case Postgres rows to camelCase API objects */
 
+import type { User, VodRoute } from '@hydrofoil/shared-types';
+
 export function mapTimestamps<T extends Record<string, unknown>>(row: T) {
   const out = { ...row } as Record<string, unknown>;
   if (row.created_at) {
@@ -63,6 +65,21 @@ export function mapInput(row: Record<string, unknown>) {
     ? String(mapped.application_app_name)
     : undefined;
   const applicationName = mapped.application_name ? String(mapped.application_name) : undefined;
+  const streamProfileIds = Array.isArray(mapped.stream_profile_ids)
+    ? mapped.stream_profile_ids.map(String)
+    : mapped.stream_profile_id
+      ? [String(mapped.stream_profile_id)]
+      : [];
+  const recordingPolicyIds = Array.isArray(mapped.recording_policy_ids)
+    ? mapped.recording_policy_ids.map(String)
+    : mapped.recording_policy_id
+      ? [String(mapped.recording_policy_id)]
+      : [];
+  const audioFeedProfileIds = Array.isArray(mapped.audio_feed_profile_ids)
+    ? mapped.audio_feed_profile_ids.map(String)
+    : mapped.audio_feed_profile_id
+      ? [String(mapped.audio_feed_profile_id)]
+      : [];
 
   return {
     id: String(mapped.id),
@@ -76,6 +93,9 @@ export function mapInput(row: Record<string, unknown>) {
     streamProfileId: mapped.stream_profile_id ?? undefined,
     recordingPolicyId: mapped.recording_policy_id ?? undefined,
     audioFeedProfileId: mapped.audio_feed_profile_id ?? undefined,
+    streamProfileIds,
+    recordingPolicyIds,
+    audioFeedProfileIds,
     application:
       applicationId && applicationAppName
         ? {
@@ -134,6 +154,59 @@ export function mapDomainBlock(row: Record<string, unknown>) {
     branding: mapped.branding ?? undefined,
     playbackAccessPolicy: mapped.playback_access_policy,
     tokenRequired: mapped.token_required,
+    createdAt: mapped.createdAt,
+    updatedAt: mapped.updatedAt,
+  };
+}
+
+export function mapUser(row: Record<string, unknown>): User {
+  const mapped = mapTimestamps(row);
+  return {
+    id: String(mapped.id),
+    organizationId: String(mapped.organization_id),
+    email: String(mapped.email),
+    displayName: mapped.display_name != null ? String(mapped.display_name) : undefined,
+    role: String(mapped.role) as User['role'],
+    isActive: Boolean(mapped.is_active),
+    createdAt: mapped.createdAt as Date,
+    updatedAt: mapped.updatedAt as Date,
+  };
+}
+
+export function mapVodRoute(row: Record<string, unknown>): VodRoute {
+  const mapped = mapTimestamps(row);
+  return {
+    id: String(mapped.id),
+    organizationId: String(mapped.organization_id),
+    name: String(mapped.name),
+    enabled: Boolean(mapped.enabled),
+    requestDomain: mapped.request_domain != null ? String(mapped.request_domain) : undefined,
+    publicPath: String(mapped.public_path),
+    deliveryType: String(mapped.delivery_type) as VodRoute['deliveryType'],
+    sourceType: String(mapped.source_type) as VodRoute['sourceType'],
+    storageLocationId:
+      mapped.storage_location_id != null ? String(mapped.storage_location_id) : undefined,
+    sourcePath: String(mapped.source_path),
+    domainBlockId: mapped.domain_block_id != null ? String(mapped.domain_block_id) : undefined,
+    allowDirectAccess: Boolean(mapped.allow_direct_access),
+    generateIframePlaylist: Boolean(mapped.generate_iframe_playlist),
+    createdAt: mapped.createdAt as Date,
+    updatedAt: mapped.updatedAt as Date,
+  };
+}
+
+export function mapDvrWatchlistEntry(row: Record<string, unknown>) {
+  const mapped = mapTimestamps(row);
+  return {
+    id: String(mapped.id),
+    organizationId: String(mapped.organization_id),
+    applicationId: mapped.application_id != null ? String(mapped.application_id) : undefined,
+    applicationName:
+      mapped.application_name != null ? String(mapped.application_name) : undefined,
+    streamPattern: mapped.stream_pattern != null ? String(mapped.stream_pattern) : undefined,
+    retentionHours: Number(mapped.retention_hours),
+    storageLocationId: String(mapped.storage_location_id),
+    enabled: Boolean(mapped.enabled),
     createdAt: mapped.createdAt,
     updatedAt: mapped.updatedAt,
   };
@@ -256,6 +329,38 @@ export function mapRecordingAsset(row: Record<string, unknown>) {
     metadata: mapped.metadata ?? undefined,
     createdAt: mapped.createdAt,
     updatedAt: mapped.updatedAt,
+  };
+}
+
+function recordingPlaybackDetails(metadata: unknown) {
+  const meta =
+    metadata && typeof metadata === 'object' ? (metadata as Record<string, unknown>) : {};
+  const finalizedContainer =
+    typeof meta.finalizedContainer === 'string' ? meta.finalizedContainer : undefined;
+  const hasHls = typeof meta.hlsManifestKey === 'string' && meta.hlsManifestKey.length > 0;
+  const playbackFormats: Array<'hls' | 'flv' | 'mp4'> = [];
+  if (hasHls) playbackFormats.push('hls');
+  if (finalizedContainer === 'mp4') playbackFormats.push('mp4');
+  else playbackFormats.push('flv');
+  return { finalizedContainer, hasHls, playbackFormats };
+}
+
+/** Recording asset with joined stream / application / policy context for operator UI. */
+export function mapRecordingAssetWithContext(row: Record<string, unknown>) {
+  const base = mapRecordingAsset(row);
+  const playback = recordingPlaybackDetails(base.metadata);
+  return {
+    ...base,
+    applicationId: row.application_id ? String(row.application_id) : undefined,
+    applicationName: row.application_name ? String(row.application_name) : undefined,
+    inputId: row.input_id ? String(row.input_id) : undefined,
+    inputName: row.input_name ? String(row.input_name) : undefined,
+    streamKey: row.stream_key ? String(row.stream_key) : undefined,
+    recordingPolicyName: row.recording_policy_name
+      ? String(row.recording_policy_name)
+      : undefined,
+    recordingPath: String(base.objectKey),
+    ...playback,
   };
 }
 

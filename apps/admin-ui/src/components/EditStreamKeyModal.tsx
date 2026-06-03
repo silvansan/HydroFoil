@@ -54,7 +54,7 @@ export const EditStreamKeyModal: React.FC<EditStreamKeyModalProps> = ({
       <Button
         variant="primary"
         onClick={onSave}
-        disabled={!form.name.trim() || !form.streamKey.trim() || isSubmitting}
+        disabled={isSubmitting}
       >
         {isSubmitting ? 'Saving…' : 'Save'}
       </Button>
@@ -67,5 +67,6 @@ export function inputToForm(input: Input): InputFormState {
     name: input.name,
     streamKey: input.streamKey,
     ingestProtocol: input.ingestProtocol,
+    protocolConfig: input.protocolConfig,
   };
 }

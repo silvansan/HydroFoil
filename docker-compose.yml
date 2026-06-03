@@ -108,6 +108,17 @@ services:
       SRS_RTMP_READ_BASE: rtmp://srs:1935
       NODE_ENV: development
       RUN_MIGRATIONS_ON_START: 'true'
+      DEFAULT_ORGANIZATION_SLUG: ${DEFAULT_ORGANIZATION_SLUG:-default}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@hydrofoil.local}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-change-me-now}
+      DEFAULT_ADMIN_DISPLAY_NAME: ${DEFAULT_ADMIN_DISPLAY_NAME:-HydroFoil Admin}
+      DEFAULT_ADMIN_ROLE: ${DEFAULT_ADMIN_ROLE:-super-admin}
+      DEFAULT_ADMIN_ACTIVE: ${DEFAULT_ADMIN_ACTIVE:-true}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-hydrofoil-dev-auth-secret}
+      PLAYBACK_TOKEN_SECRET: ${PLAYBACK_TOKEN_SECRET:-hydrofoil-dev-playback-secret}
+      PLAYBACK_TOKEN_TTL_SECONDS: ${PLAYBACK_TOKEN_TTL_SECONDS:-3600}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
     ports:
       - '3001:3001'
     depends_on:

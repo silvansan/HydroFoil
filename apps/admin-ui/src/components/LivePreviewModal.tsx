@@ -2,9 +2,10 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { Button, Card } from '@hydrofoil/ui-kit';
 
+import { api } from '../api/client';
 import { HlsPlayer } from './HlsPlayer';
 import { SessionStatusBadge } from './SessionStatusBadge';
-import { absoluteHlsUrl, buildHlsEmbedCode, playbackUrlsForIngest } from '../lib/playback';
+import { buildLiveIframeEmbedCode, playbackUrlsForIngest } from '../lib/playback';
 import { copyText } from '../lib/clipboard';
 import { rtmpIngestUrl } from '../lib/stream';
 
@@ -22,14 +23,30 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
   onClose,
 }) => {
   const [toast, setToast] = React.useState<string | null>(null);
+  const [protectedPlayback, setProtectedPlayback] = React.useState<{
+    token: string;
+    hlsUrl: string;
+    embedUrl: string;
+  } | null>(null);
   const urls = React.useMemo(
     () => playbackUrlsForIngest(streamKey, gatewayApp),
     [streamKey, gatewayApp]
   );
-  const hlsAbsolute = React.useMemo(
-    () => absoluteHlsUrl(streamKey, gatewayApp),
-    [streamKey, gatewayApp]
-  );
+  React.useEffect(() => {
+    api
+      .issueLivePlaybackToken({
+        app: gatewayApp,
+        stream: streamKey,
+      })
+      .then((result) =>
+        setProtectedPlayback({
+          token: result.token,
+          hlsUrl: result.hlsUrl,
+          embedUrl: result.embedUrl,
+        })
+      )
+      .catch(() => setProtectedPlayback(null));
+  }, [gatewayApp, streamKey]);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -87,17 +104,19 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          <HlsPlayer src={urls.hls} />
+          <HlsPlayer src={protectedPlayback?.hlsUrl ?? urls.hls} />
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => copy('HLS link', hlsAbsolute)}>
-              Copy HLS link
-            </Button>
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => copy('Embed code', buildHlsEmbedCode(hlsAbsolute))}
+              onClick={() =>
+                copy(
+                  'Embed code',
+                  buildLiveIframeEmbedCode(streamKey, gatewayApp, protectedPlayback?.token)
+                )
+              }
             >
               Copy embed code
             </Button>
@@ -116,13 +135,30 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => window.open(hlsAbsolute, '_blank', 'noopener,noreferrer')}
+              onClick={() =>
+                copy(
+                  'Player link',
+                  `${window.location.origin}${
+                    protectedPlayback?.embedUrl ??
+                    `/embed?app=${encodeURIComponent(gatewayApp)}&stream=${encodeURIComponent(
+                      streamKey
+                    )}&live=1`
+                  }`
+                )
+              }
             >
-              Open in tab
+              Copy player link
             </Button>
           </div>
 
-          <p className="text-xs text-slate-500 break-all">{hlsAbsolute}</p>
+          <p className="text-xs text-slate-500 break-all">
+            {`${window.location.origin}${
+              protectedPlayback?.embedUrl ??
+              `/embed?app=${encodeURIComponent(gatewayApp)}&stream=${encodeURIComponent(
+                streamKey
+              )}&live=1`
+            }`}
+          </p>
         </div>
 
         {toast && (

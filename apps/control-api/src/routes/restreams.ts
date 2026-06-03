@@ -16,6 +16,7 @@ import {
   type RestreamDestinationDto,
 } from '../lib/restream';
 import { buildSrtPushUrl } from '@hydrofoil/domain';
+import { assertInputAccess, filterInputsByScope, getAccessScope } from '../lib/access-control';
 
 const rtmpUrl = z
   .string()
@@ -66,6 +67,19 @@ const patchRestreamSchema = z.object({
   pushUrl: pushUrl.optional(),
 });
 
+async function assertRestreamOutputAccess(
+  ctx: AppContext,
+  outputId: string,
+  scope: ReturnType<typeof getAccessScope>
+) {
+  const allRoutes = await ctx.repos.routes.listAll(ctx.organizationId);
+  const route = allRoutes.find((r: Route) => r.outputIds.includes(outputId));
+  if (!route) {
+    throw new NotFoundError('Restream destination not found');
+  }
+  await assertInputAccess(ctx.organizationId, route.inputId, scope, ctx.repos);
+}
+
 function internalRtmpTarget(appName: string, streamName: string): string {
   const base = config.srsRtmpForwardBase.replace(/\/$/, '');
   const app = appName.replace(/^\/+|\/+$/g, '');
@@ -78,19 +92,26 @@ export function createRestreamsRouter(ctx: AppContext): Router {
 
   router.get(
     '/',
-    asyncHandler(async (_req, res) => {
+    asyncHandler(async (req, res) => {
+      const scope = getAccessScope(req);
       const [inputsResult, routes, outputs] = await Promise.all([
-        ctx.repos.inputs.list(ctx.organizationId, { page: 1, pageSize: 500 }),
+        ctx.repos.inputs.list(ctx.organizationId, {
+          page: 1,
+          pageSize: 500,
+          applicationIds: scope.applicationIds ?? undefined,
+        }),
         ctx.repos.routes.listAll(ctx.organizationId),
         ctx.repos.outputs.listAll(ctx.organizationId),
       ]);
-      res.json({ items: buildRestreamGroups(inputsResult.items, routes, outputs) });
+      const inputs = filterInputsByScope(inputsResult.items, scope) as Input[];
+      res.json({ items: buildRestreamGroups(inputs, routes, outputs) });
     })
   );
 
   router.get(
     '/inputs/:inputId',
     asyncHandler(async (req, res) => {
+      await assertInputAccess(ctx.organizationId, req.params.inputId, getAccessScope(req), ctx.repos);
       const input = await ctx.repos.inputs.findById(ctx.organizationId, req.params.inputId);
       if (!input) throw new NotFoundError('Input not found');
 
@@ -118,6 +139,7 @@ export function createRestreamsRouter(ctx: AppContext): Router {
   router.post(
     '/inputs/:inputId',
     asyncHandler(async (req, res) => {
+      await assertInputAccess(ctx.organizationId, req.params.inputId, getAccessScope(req), ctx.repos);
       const parsed = createRestreamSchema.safeParse(req.body);
       if (!parsed.success) throw new BadRequestError(formatZodError(parsed.error));
 
@@ -183,6 +205,7 @@ export function createRestreamsRouter(ctx: AppContext): Router {
   router.get(
     '/:destinationId',
     asyncHandler(async (req, res) => {
+      await assertRestreamOutputAccess(ctx, req.params.destinationId, getAccessScope(req));
       const output = await ctx.repos.outputs.findById(
         ctx.organizationId,
         req.params.destinationId
@@ -208,6 +231,7 @@ export function createRestreamsRouter(ctx: AppContext): Router {
   router.patch(
     '/:destinationId',
     asyncHandler(async (req, res) => {
+      await assertRestreamOutputAccess(ctx, req.params.destinationId, getAccessScope(req));
       const parsed = patchRestreamSchema.safeParse(req.body);
       if (!parsed.success) throw new BadRequestError(formatZodError(parsed.error));
 
@@ -247,6 +271,7 @@ export function createRestreamsRouter(ctx: AppContext): Router {
   router.delete(
     '/:destinationId',
     asyncHandler(async (req, res) => {
+      await assertRestreamOutputAccess(ctx, req.params.destinationId, getAccessScope(req));
       const output = await ctx.repos.outputs.findById(
         ctx.organizationId,
         req.params.destinationId

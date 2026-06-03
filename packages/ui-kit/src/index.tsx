@@ -20,19 +20,22 @@ export const Card: React.FC<CardProps> = ({ className = '', ...props }) => (
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger';
   size?: 'sm' | 'md' | 'lg';
+  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 }
 
 export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   size = 'md',
   className = '',
+  icon: Icon,
   ...props
 }) => {
   const baseClasses = 'font-medium rounded-lg transition-colors';
   const variants = {
     primary:
       'bg-gradient-to-r from-brand-600 to-brand-500 text-white hover:from-brand-500 hover:to-brand-400 shadow-md shadow-brand-900/30',
-    secondary: 'bg-slate-700/80 text-slate-200 hover:bg-slate-600 border border-slate-600',
+    secondary:
+      'hf-btn-secondary bg-slate-700/80 text-slate-200 hover:bg-slate-600 border border-slate-600',
     danger: 'bg-red-600/90 text-white hover:bg-red-500',
   };
   const sizes = {
@@ -45,7 +48,10 @@ export const Button: React.FC<ButtonProps> = ({
     <button
       className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
-    />
+    >
+      {Icon ? <Icon className="mr-2 inline-block h-4 w-4" /> : null}
+      {props.children}
+    </button>
   );
 };
 

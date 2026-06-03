@@ -1,6 +1,6 @@
 # HydroFoil Operator Runbook
 
-Last updated: 2026-05-30
+Last updated: 2026-06-02
 
 This runbook covers single-node Docker deployment and day-2 operations for HydroFoil. HydroFoil owns desired media state, metadata, jobs, and storage references; SRS remains the media runtime for ingest, live playback, DVR files, WebRTC, FLV, and HLS.
 
@@ -24,6 +24,26 @@ This runbook covers single-node Docker deployment and day-2 operations for Hydro
 4. Set `SRS_WEBHOOK_SECRET` if SRS webhooks leave the Docker network.
 5. Decide public hostnames for the admin UI, SRS playback, RTMP/SRT ingest, and MinIO public endpoint.
 
+Full production checklist: [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md).
+
+## Authentication (production)
+
+HydroFoil uses JWT bearer tokens for the admin UI and control-api (`Authorization: Bearer …`).
+
+| Variable | Purpose |
+|----------|---------|
+| `AUTH_TOKEN_SECRET` | Signs login tokens — use a long random secret in production |
+| `PLAYBACK_TOKEN_SECRET` | Signed playback / embed URLs |
+| `PLAYBACK_TOKEN_TTL_SECONDS` | Token lifetime (default 3600) |
+| `DEFAULT_ADMIN_EMAIL` | Bootstrap user created on first control-api start if missing |
+| `DEFAULT_ADMIN_PASSWORD` | Initial password for that user only |
+| `DEFAULT_ADMIN_ROLE` | Usually `super-admin` |
+| `PUBLIC_APP_URL` | Base URL in password-reset / access-request emails |
+
+After first login, change the bootstrap password. If operators see “session expired” on System Status while `/health` is OK, log in again — expired JWTs are cleared client-side.
+
+Moderator scoping (applications, privacy policies, storage) requires migrations `015`–`016` and assignments on the Users page.
+
 ## Development Stack
 
 ```bash
@@ -42,19 +62,22 @@ docker compose --profile storage up --build storage-service
 ## Production Compose
 
 ```bash
+cp .env.prod.example .env.prod   # replace every CHANGE_ME
 npm run docker:prod
 npm run docker:prod:smoke
 ```
 
-The production overlay swaps the app services to production Dockerfiles but still inherits local infrastructure from `docker-compose.yml`. Change development credentials before exposing it:
+The production overlay uses production Dockerfiles and reads secrets from `.env.prod`. For Portainer, use `deploy/portainer/` instead. Change development credentials before exposing it:
 
 - `POSTGRES_PASSWORD` and `DATABASE_URL`
 - `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
 - `STORAGE_SECRET_KEY`
+- `AUTH_TOKEN_SECRET` and `PLAYBACK_TOKEN_SECRET`
+- `DEFAULT_ADMIN_PASSWORD` (bootstrap only)
 - `SRS_WEBHOOK_SECRET`
 - `MINIO_PUBLIC_ENDPOINT`
 
-Prefer putting production secrets in an environment file or deployment secret manager instead of committing them.
+Prefer putting production secrets in an environment file or deployment secret manager instead of committing them. Use [deploy/portainer/stack.env.example](../deploy/portainer/stack.env.example) as a template.
 
 ## Network And TLS
 
@@ -126,6 +149,8 @@ Common issues:
 - Live sessions do not appear: check SRS `http_hooks`, `SRS_WEBHOOK_SECRET`, and control-api logs.
 - Recording does not finalize: check `media-worker` logs, `SRS_DVR_ROOT`, the `srs_data` mount, and MinIO credentials.
 - Remote S3 credentials fail: verify `STORAGE_SECRET_KEY` has not changed since credentials were saved.
+- System Status shows errors but `/health` is OK: operator JWT expired — log in again.
+- Privacy allowlist not enforced: policy must be `restricted` with at least one domain; attach policy to output or VOD route.
 
 ## Backup And Restore
 
@@ -142,7 +167,7 @@ For restore, bring up Postgres first, run migrations, restore object storage, th
 
 1. Back up Postgres and storage before applying migrations.
 2. Pull or build the new images.
-3. Run migrations once through the `migrate` service or `RUN_MIGRATIONS_ON_START`.
+3. Run migrations once through the `migrate` service or `RUN_MIGRATIONS_ON_START` (see `packages/db/migrations/README.md`).
 4. Start app services and run `npm run docker:prod:smoke`.
 5. Run the media smoke before handing the system back to operators.
 

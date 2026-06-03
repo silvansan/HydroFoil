@@ -70,9 +70,13 @@ export function buildHlsEmbedCode(hlsUrl: string): string {
 }
 
 /** iframe embed via HydroFoil /embed page (recommended for CMS / WordPress). */
-export function buildLiveIframeEmbedCode(streamKey: string, app = INGEST_APP): string {
+export function buildLiveIframeEmbedCode(
+  streamKey: string,
+  app = INGEST_APP,
+  token?: string
+): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const embedUrl = buildLiveEmbedPageUrl(streamKey, app, origin);
+  const embedUrl = buildLiveEmbedPageUrl({ streamKey, app, origin, token });
   return buildHydroFoilIframeEmbed({
     embedUrl,
     title: `${app}/${streamKey}`,
@@ -83,4 +87,18 @@ export function absoluteApiUrl(path: string): string {
   if (path.startsWith('http')) return path;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+export function protectedLivePlaybackPath(
+  app: string,
+  streamKey: string,
+  format: 'm3u8' | 'flv',
+  token?: string
+): string {
+  const basePath = `/api/playback/live/${app}/${streamKey}.${format}`;
+  if (!token) {
+    return basePath;
+  }
+  const params = new URLSearchParams({ token });
+  return `${basePath}?${params.toString()}`;
 }

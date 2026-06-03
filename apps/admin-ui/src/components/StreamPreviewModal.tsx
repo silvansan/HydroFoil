@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 
 import { Button, Card } from '@hydrofoil/ui-kit';
 
+import { api } from '../api/client';
 
 
 import { FlvPlayer } from './FlvPlayer';
@@ -15,7 +16,6 @@ import { SessionStatusBadge } from './SessionStatusBadge';
 import {
 
   absoluteFlvUrl,
-
   absoluteHlsUrl,
 
   buildHlsEmbedCode,
@@ -27,10 +27,6 @@ import {
 import { ClickableStreamUrl } from './CopyableUrl';
 
 import { copyText } from '../lib/clipboard';
-
-import { rtmpIngestUrl } from '../lib/stream';
-
-
 
 export interface StreamPreviewTarget {
 
@@ -56,7 +52,7 @@ interface StreamPreviewModalProps {
 
 
 
-type UrlChoice = 'hls' | 'flv' | 'rtmp_ingest';
+type UrlChoice = 'hls' | 'flv';
 
 
 
@@ -69,6 +65,12 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
   const [urlChoice, setUrlChoice] = React.useState<UrlChoice>(isLive ? 'hls' : 'hls');
 
   const [toast, setToast] = React.useState<string | null>(null);
+  const [protectedPlayback, setProtectedPlayback] = React.useState<{
+    token: string;
+    hlsUrl: string;
+    flvUrl: string;
+    embedUrl: string;
+  } | null>(null);
 
 
 
@@ -102,21 +104,36 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
 
 
-  const rtmpIngest = React.useMemo(
-
-    () => rtmpIngestUrl(streamKey, gatewayApp),
-
-    [streamKey, gatewayApp]
-
-  );
-
-
-
   const selectedUrl =
+    urlChoice === 'hls'
+      ? `${window.location.origin}${
+          protectedPlayback?.embedUrl ??
+          `/embed?app=${encodeURIComponent(gatewayApp)}&stream=${encodeURIComponent(
+            streamKey
+          )}&live=1`
+        }`
+      : protectedPlayback?.flvUrl
+        ? `${window.location.origin}${protectedPlayback.flvUrl}`
+        : flvAbsolute;
 
-    urlChoice === 'hls' ? hlsAbsolute : urlChoice === 'flv' ? flvAbsolute : rtmpIngest;
 
 
+  React.useEffect(() => {
+    api
+      .issueLivePlaybackToken({
+        app: gatewayApp,
+        stream: streamKey,
+      })
+      .then((result) =>
+        setProtectedPlayback({
+          token: result.token,
+          hlsUrl: result.hlsUrl,
+          flvUrl: result.flvUrl,
+          embedUrl: result.embedUrl,
+        })
+      )
+      .catch(() => setProtectedPlayback(null));
+  }, [gatewayApp, streamKey]);
 
   React.useEffect(() => {
 
@@ -252,9 +269,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
                 <option value="flv">HTTP-FLV — monitor (low latency)</option>
 
-                <option value="hls">HLS — browser / embed</option>
-
-                <option value="rtmp_ingest">RTMP — publish (ingest)</option>
+                <option value="hls">Player page — protected embed</option>
 
               </select>
 
@@ -274,29 +289,9 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
               onCopied={notify}
 
-              copiedMessage={
-
-                urlChoice === 'rtmp_ingest'
-
-                  ? 'Ingest URL copied — paste into your encoder'
-
-                  : 'URL copied'
-
-              }
+              copiedMessage="URL copied"
 
             />
-
-            {urlChoice === 'rtmp_ingest' && (
-
-              <p className="mt-2 text-xs hf-muted">
-
-                Send video <em>into</em> HydroFoil from vMix, OBS, or another encoder — paste as the
-
-                stream/server URL. Not for playback.
-
-              </p>
-
-            )}
 
           </div>
 
@@ -304,22 +299,14 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
           {urlChoice === 'hls' ? (
             <HydroFoilPlayer
-              src={hlsAbsolute}
+              src={protectedPlayback?.hlsUrl ?? hlsAbsolute}
               title={label ?? `${gatewayApp}/${streamKey}`}
               isLive={isLive}
               playbackMode="live-hls"
             />
-          ) : urlChoice === 'flv' ? (
-
-            <FlvPlayer src={urls.flv} />
-
           ) : (
 
-            <div className="rounded-lg border border-slate-700/50 bg-slate-900/80 px-4 py-8 text-center text-sm text-slate-400">
-
-              RTMP is for publishing from vMix/OBS. Copy the URL above into your encoder.
-
-            </div>
+            <FlvPlayer src={protectedPlayback?.flvUrl ?? urls.flv} />
 
           )}
 
@@ -331,8 +318,14 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() =>
-                copyText(buildLiveIframeEmbedCode(streamKey, gatewayApp)).then((ok) =>
+                onClick={() =>
+                copyText(
+                  buildLiveIframeEmbedCode(
+                    streamKey,
+                    gatewayApp,
+                    protectedPlayback?.token
+                  )
+                ).then((ok) =>
                   notify(ok ? 'Iframe embed copied' : 'Copy failed')
                 )
               }
@@ -343,8 +336,14 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() =>
-                copyText(buildHlsEmbedCode(hlsAbsolute)).then((ok) =>
+                onClick={() =>
+                copyText(
+                  buildHlsEmbedCode(
+                    protectedPlayback?.embedUrl
+                      ? `${window.location.origin}${protectedPlayback.embedUrl}`
+                      : `${window.location.origin}/embed?app=${encodeURIComponent(gatewayApp)}&stream=${encodeURIComponent(streamKey)}&live=1`
+                  )
+                ).then((ok) =>
                   notify(ok ? 'Script embed copied' : 'Copy failed')
                 )
               }
@@ -362,11 +361,19 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
                 size="sm"
 
-                onClick={() => window.open(hlsAbsolute, '_blank', 'noopener,noreferrer')}
+                onClick={() =>
+                  window.open(
+                    protectedPlayback?.embedUrl
+                      ? `${window.location.origin}${protectedPlayback.embedUrl}`
+                      : `${window.location.origin}/embed?app=${encodeURIComponent(gatewayApp)}&stream=${encodeURIComponent(streamKey)}&live=1`,
+                    '_blank',
+                    'noopener,noreferrer'
+                  )
+                }
 
               >
 
-                Open HLS in tab
+                Open player page
 
               </Button>
 
@@ -382,7 +389,15 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
                 size="sm"
 
-                onClick={() => window.open(flvAbsolute, '_blank', 'noopener,noreferrer')}
+                onClick={() =>
+                  window.open(
+                    protectedPlayback?.flvUrl
+                      ? `${window.location.origin}${protectedPlayback.flvUrl}`
+                      : flvAbsolute,
+                    '_blank',
+                    'noopener,noreferrer'
+                  )
+                }
 
               >
 

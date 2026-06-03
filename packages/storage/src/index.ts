@@ -174,6 +174,30 @@ export class StorageClient {
     await this.client.removeObject(bucketName, objectName);
   }
 
+  async deleteObjects(bucketName: string, objectNames: string[]): Promise<void> {
+    for (const objectName of objectNames) {
+      await this.deleteObject(bucketName, objectName);
+    }
+  }
+
+  async deletePrefix(bucketName: string, prefix: string): Promise<number> {
+    const normalized = prefix.endsWith('/') ? prefix : `${prefix}/`;
+    const objects = await this.listObjects(bucketName, { prefix: normalized, recursive: true });
+    const objectNames = objects
+      .filter((object) => object.type === 'object')
+      .map((object) => object.key);
+    await this.deleteObjects(bucketName, objectNames);
+
+    let deleted = objectNames.length;
+    try {
+      await this.deleteObject(bucketName, normalized);
+      deleted += 1;
+    } catch {
+      // Folder marker may not exist when only child objects were removed.
+    }
+    return deleted;
+  }
+
   async getObjectStat(bucketName: string, objectName: string): Promise<ObjectMetadata> {
     const stat = await this.client.statObject(bucketName, objectName);
     return {
@@ -195,6 +219,16 @@ export class StorageClient {
     return this.toPublicUrl(url);
   }
 
+  async getSignedUploadUrl(
+    bucketName: string,
+    objectName: string,
+    expirySeconds: number = 15 * 60
+  ): Promise<string> {
+    await this.ensureBucket(bucketName);
+    const url = await this.client.presignedPutObject(bucketName, objectName, expirySeconds);
+    return this.toPublicUrl(url);
+  }
+
   async putObject(
     bucketName: string,
     objectName: string,
@@ -205,6 +239,14 @@ export class StorageClient {
     await this.client.putObject(bucketName, objectName, stream as Readable, size, {
       'Content-Type': 'application/octet-stream',
       ...metadata,
+    });
+  }
+
+  async createFolder(bucketName: string, prefix: string): Promise<void> {
+    const folderObject = prefix.endsWith('/') ? prefix : `${prefix}/`;
+    await this.ensureBucket(bucketName);
+    await this.client.putObject(bucketName, folderObject, Buffer.from(''), 0, {
+      'Content-Type': 'application/x-directory',
     });
   }
 
@@ -233,6 +275,28 @@ export class StorageClient {
     await this.copyObject(sourceBucket, sourceObject, destBucket, destObject);
     await this.deleteObject(sourceBucket, sourceObject);
     return this.getObjectStat(destBucket, destObject);
+  }
+
+  async movePrefix(
+    sourceBucket: string,
+    sourcePrefix: string,
+    destBucket: string,
+    destPrefix: string
+  ): Promise<{ moved: number }> {
+    const source = sourcePrefix.endsWith('/') ? sourcePrefix : `${sourcePrefix}/`;
+    const destination = destPrefix.endsWith('/') ? destPrefix : `${destPrefix}/`;
+    const objects = await this.listObjects(sourceBucket, { prefix: source, recursive: true });
+    const objectNames = objects
+      .filter((object) => object.type === 'object')
+      .map((object) => object.key);
+
+    await this.ensureBucket(destBucket);
+    for (const objectName of objectNames) {
+      const destinationObject = `${destination}${objectName.slice(source.length)}`;
+      await this.copyObject(sourceBucket, objectName, destBucket, destinationObject);
+    }
+    await this.deleteObjects(sourceBucket, objectNames);
+    return { moved: objectNames.length };
   }
 }
 

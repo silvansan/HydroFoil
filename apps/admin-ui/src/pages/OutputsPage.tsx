@@ -2,7 +2,7 @@ import React from 'react';
 import { PageHeader, Card, Button, Modal, TextInput } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
-import type { Output } from '../api/types';
+import type { DomainBlock, Output } from '../api/types';
 import { Alert } from '../components/Alert';
 import { FormError } from '../components/FormError';
 import { LivePreviewModal } from '../components/LivePreviewModal';
@@ -14,6 +14,7 @@ import { suggestPlaybackTarget } from '../lib/stream';
 
 const OutputsPage: React.FC = () => {
   const { items, isLoading, error, reload } = useResourceList<Output>(() => api.listOutputs());
+  const [domainBlocks, setDomainBlocks] = React.useState<DomainBlock[]>([]);
   const [preview, setPreview] = React.useState<{
     gatewayApp: string;
     streamKey: string;
@@ -25,6 +26,7 @@ const OutputsPage: React.FC = () => {
     playbackProtocol: 'hls' as Output['playbackProtocol'],
     gatewayAppName: 'live',
     gatewayStreamName: '',
+    domainBlockId: '',
   });
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -45,6 +47,15 @@ const OutputsPage: React.FC = () => {
     return next;
   };
 
+  React.useEffect(() => {
+    api.listDomainBlocks().then((result) => setDomainBlocks(result.items));
+  }, []);
+
+  const domainBlockById = React.useMemo(
+    () => new Map(domainBlocks.map((block) => [block.id, block])),
+    [domainBlocks]
+  );
+
   const openModal = () => {
     setSubmitError(null);
     setForm({
@@ -53,6 +64,7 @@ const OutputsPage: React.FC = () => {
       playbackProtocol: 'hls',
       gatewayAppName: 'live',
       gatewayStreamName: '',
+      domainBlockId: '',
     });
     setIsModalOpen(true);
   };
@@ -65,14 +77,17 @@ const OutputsPage: React.FC = () => {
       const payload = applySuggestedTarget({ ...form });
       await api.createOutput({
         name: payload.name.trim(),
-        routeTarget: payload.routeTarget.trim() || suggestPlaybackTarget(
-          payload.playbackProtocol,
-          payload.gatewayAppName,
-          payload.gatewayStreamName
-        ),
+        routeTarget:
+          payload.routeTarget.trim() ||
+          suggestPlaybackTarget(
+            payload.playbackProtocol,
+            payload.gatewayAppName,
+            payload.gatewayStreamName
+          ),
         playbackProtocol: payload.playbackProtocol,
         gatewayAppName: payload.gatewayAppName.trim(),
         gatewayStreamName: payload.gatewayStreamName.trim(),
+        domainBlockId: payload.domainBlockId || undefined,
         enabled: true,
         isPublic: true,
       });
@@ -90,11 +105,16 @@ const OutputsPage: React.FC = () => {
     await reload();
   };
 
+  const updateDomainBlock = async (outputId: string, domainBlockId: string) => {
+    await api.updateOutput(outputId, { domainBlockId: domainBlockId || undefined });
+    await reload();
+  };
+
   return (
     <div>
       <PageHeader
         title="Outputs"
-        description="Playback destinations — SRS application and stream name define where media is forwarded"
+        description="Playback destinations - choose where a live stream is published, then attach a privacy policy if it needs browser restrictions"
         action={
           <Button variant="primary" onClick={openModal}>
             + New Output
@@ -117,7 +137,7 @@ const OutputsPage: React.FC = () => {
           <h2 className="text-lg font-semibold text-slate-100">Output destinations</h2>
         </div>
         {isLoading ? (
-          <div className="px-6 py-12 text-center hf-muted">Loading outputs…</div>
+          <div className="px-6 py-12 text-center hf-muted">Loading outputs...</div>
         ) : items.length === 0 ? (
           <div className="px-6 py-12 text-center hf-muted">
             Create an output with an SRS application and stream name for forwarded playback.
@@ -140,6 +160,12 @@ const OutputsPage: React.FC = () => {
                       <span className="text-xs uppercase text-slate-500">
                         {output.playbackProtocol}
                       </span>
+                      <span className="text-xs text-slate-500">
+                        Privacy policy:{' '}
+                        {output.domainBlockId
+                          ? domainBlockById.get(output.domainBlockId)?.name ?? 'Assigned'
+                          : 'None'}
+                      </span>
                       {!output.enabled && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700/80 text-slate-400 border border-slate-600">
                           Disabled
@@ -147,6 +173,21 @@ const OutputsPage: React.FC = () => {
                       )}
                     </div>
                     <p className="font-mono text-xs text-slate-500 break-all">{output.routeTarget}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-400">Privacy policy</label>
+                    <select
+                      className="hf-select min-w-52"
+                      value={output.domainBlockId ?? ''}
+                      onChange={(e) => updateDomainBlock(output.id, e.target.value)}
+                    >
+                      <option value="">No privacy policy</option>
+                      {domainBlocks.map((block) => (
+                        <option key={block.id} value={block.id}>
+                          {block.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <RowActions
                     name={output.name}
@@ -233,9 +274,28 @@ const OutputsPage: React.FC = () => {
             value={form.routeTarget}
             onChange={(e) => setForm((f) => ({ ...f, routeTarget: e.target.value }))}
           />
+          <div>
+            <label className="text-sm font-medium text-slate-300">Privacy policy</label>
+            <select
+              className="hf-select mt-1"
+              value={form.domainBlockId}
+              onChange={(e) => setForm((f) => ({ ...f, domainBlockId: e.target.value }))}
+            >
+              <option value="">No privacy policy</option>
+              {domainBlocks.map((block) => (
+                <option key={block.id} value={block.id}>
+                  {block.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <p className="hf-muted text-xs">
             Suggested:{' '}
-            {suggestPlaybackTarget(form.playbackProtocol, form.gatewayAppName, form.gatewayStreamName)}
+            {suggestPlaybackTarget(
+              form.playbackProtocol,
+              form.gatewayAppName,
+              form.gatewayStreamName
+            )}
           </p>
           <FormError message={submitError} />
           <div className="flex justify-end gap-2 pt-2">
@@ -243,7 +303,7 @@ const OutputsPage: React.FC = () => {
               Cancel
             </Button>
             <Button variant="primary" onClick={handleCreate} disabled={!canSubmit || isSubmitting}>
-              {isSubmitting ? 'Saving…' : 'Create Output'}
+              {isSubmitting ? 'Saving...' : 'Create Output'}
             </Button>
           </div>
         </div>

@@ -1,0 +1,305 @@
+import type { Request } from 'express';
+import { Router } from 'express';
+import { z } from 'zod';
+import type { DomainBlock, Output } from '@hydrofoil/shared-types';
+
+import type { AppContext } from '../context';
+import { config } from '../config';
+import { BadRequestError, HttpError, NotFoundError } from '../errors';
+import { asyncHandler } from '../middleware/async-handler';
+import { PlaybackTokenService } from '../services/playback-token';
+
+const issuePlaybackTokenSchema = z.object({
+  app: z.string().min(1),
+  stream: z.string().min(1),
+  expiresInSeconds: z.number().int().positive().max(86400).optional(),
+});
+
+const playbackTokenService = new PlaybackTokenService(config.playbackTokenSecret);
+
+function appendTokenToPath(path: string, token?: string): string {
+  if (!token) return path;
+  const [base, search = ''] = path.split('?');
+  const params = new URLSearchParams(search);
+  params.set('token', token);
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
+function rewritePlaylist(body: string, app: string, token?: string): string {
+  return body
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return line;
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return line;
+
+      let nextPath = trimmed;
+      if (nextPath.startsWith(`/${app}/`)) {
+        nextPath = nextPath.slice(app.length + 2);
+      } else if (nextPath.startsWith('/')) {
+        nextPath = nextPath.slice(1);
+      }
+
+      return appendTokenToPath(`/api/playback/live/${app}/${nextPath}`, token);
+    })
+    .join('\n');
+}
+
+function extractPlaybackToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice('Bearer '.length).trim();
+  }
+
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  if (queryToken) {
+    return queryToken;
+  }
+
+  const cookieHeader = req.headers.cookie ?? '';
+  const cookieToken = cookieHeader
+    .split(';')
+    .map((part: string) => part.trim())
+    .find((part: string) => part.startsWith('hydrofoil_playback_token='));
+
+  return cookieToken ? decodeURIComponent(cookieToken.split('=')[1] ?? '') : null;
+}
+
+function extractRequestDomain(req: Request): string | null {
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  const raw = typeof origin === 'string' && origin
+    ? origin
+    : typeof referer === 'string' && referer
+      ? referer
+      : '';
+
+  if (!raw) return null;
+
+  try {
+    return new URL(raw).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function domainMatches(allowedDomains: string[], requestDomain: string | null): boolean {
+  if (allowedDomains.length === 0) {
+    return true;
+  }
+  if (!requestDomain) {
+    return false;
+  }
+
+  const normalized = requestDomain.toLowerCase();
+  return allowedDomains.some((domain) => {
+    const expected = domain.trim().toLowerCase();
+    return normalized === expected || normalized.endsWith(`.${expected}`);
+  });
+}
+
+function isDirectBrowserNavigation(req: Request): boolean {
+  const fetchMode = req.headers['sec-fetch-mode'];
+  const fetchDest = req.headers['sec-fetch-dest'];
+  const accept = req.headers.accept ?? '';
+
+  const mode = Array.isArray(fetchMode) ? fetchMode[0] : fetchMode;
+  const dest = Array.isArray(fetchDest) ? fetchDest[0] : fetchDest;
+
+  return (
+    mode === 'navigate' ||
+    dest === 'document' ||
+    (typeof accept === 'string' && accept.includes('text/html'))
+  );
+}
+
+async function findPlaybackOutput(ctx: AppContext, app: string, resourcePath: string) {
+  const outputs = (await ctx.repos.outputs.listAll(ctx.organizationId)) as Output[];
+  const filename = resourcePath.split('/').pop() ?? resourcePath;
+  const candidates = outputs
+    .filter((output) => output.enabled && output.gatewayAppName === app)
+    .filter((output) => {
+      const streamName = output.gatewayStreamName;
+      return (
+        filename === `${streamName}.m3u8` ||
+        filename === `${streamName}.flv` ||
+        filename.startsWith(`${streamName}-`) ||
+        filename.startsWith(`${streamName}_`) ||
+        filename.startsWith(`${streamName}.`)
+      );
+    })
+    .sort((a: Output, b: Output) => b.gatewayStreamName.length - a.gatewayStreamName.length);
+
+  return candidates[0] ?? null;
+}
+
+async function enforcePlaybackPolicy(
+  ctx: AppContext,
+  app: string,
+  stream: string,
+  req: Request
+) {
+  const outputs = (await ctx.repos.outputs.listAll(ctx.organizationId)) as Output[];
+  const output = outputs.find(
+    (item) => item.enabled && item.gatewayAppName === app && item.gatewayStreamName === stream
+  );
+
+  if (!output) {
+    throw new NotFoundError('Playback target not found');
+  }
+
+  if (!output.domainBlockId) {
+    return output;
+  }
+
+  const block = (await ctx.repos.domainBlocks.findById(
+    ctx.organizationId,
+    output.domainBlockId
+  )) as DomainBlock | null;
+  if (!block) {
+    return output;
+  }
+
+  const requestDomain = extractRequestDomain(req);
+  const token = extractPlaybackToken(req);
+
+  const allowedDomains = Array.isArray(block.allowedDomains) ? block.allowedDomains : [];
+
+  if (block.playbackAccessPolicy === 'restricted' && !domainMatches(allowedDomains, requestDomain)) {
+    throw new HttpError(403, 'Playback blocked for this domain');
+  }
+
+  if (block.playbackAccessPolicy === 'token-required' || block.tokenRequired) {
+    if (!token) {
+      throw new HttpError(401, 'Playback token required');
+    }
+    const payload = playbackTokenService.verifyToken(token);
+    if (
+      !payload ||
+      payload.organizationId !== ctx.organizationId ||
+      payload.app !== app ||
+      payload.stream !== stream
+    ) {
+      throw new HttpError(403, 'Invalid playback token');
+    }
+    if (!domainMatches(allowedDomains, requestDomain)) {
+      throw new HttpError(403, 'Playback blocked for this domain');
+    }
+  }
+
+  return output;
+}
+
+async function resolvePlaybackOutput(
+  ctx: AppContext,
+  app: string,
+  stream: string
+) {
+  const outputs = (await ctx.repos.outputs.listAll(ctx.organizationId)) as Output[];
+  const output = outputs.find(
+    (item) => item.enabled && item.gatewayAppName === app && item.gatewayStreamName === stream
+  );
+
+  if (!output) {
+    throw new NotFoundError('Playback target not found');
+  }
+
+  return output;
+}
+
+async function proxyPlaybackFromSrs(resourcePath: string) {
+  const upstreamUrl = new URL(resourcePath.replace(/^\/+/, ''), `${config.srsPlaybackBaseUrl}/`);
+  const response = await fetch(upstreamUrl);
+  const body = Buffer.from(await response.arrayBuffer());
+
+  return {
+    status: response.status,
+    contentType: response.headers.get('content-type') ?? undefined,
+    body,
+  };
+}
+
+export function createPlaybackRouter(ctx: AppContext): Router {
+  const router = Router();
+
+  router.post(
+    '/live-token',
+    asyncHandler(async (req, res) => {
+      const parsed = issuePlaybackTokenSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new BadRequestError(parsed.error.message);
+      }
+
+      const app = parsed.data.app.replace(/^\/+|\/+$/g, '');
+      const stream = parsed.data.stream.replace(/^\/+|\/+$/g, '');
+      const expiresInSeconds = parsed.data.expiresInSeconds ?? config.playbackTokenTtlSeconds;
+      await resolvePlaybackOutput(ctx, app, stream);
+
+      const token = playbackTokenService.issueToken({
+        organizationId: ctx.organizationId,
+        app,
+        stream,
+        exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
+      });
+
+      const hlsPath = `/api/playback/live/${app}/${stream}.m3u8`;
+      const flvPath = `/api/playback/live/${app}/${stream}.flv`;
+      const embedUrl = `/embed?${new URLSearchParams({
+        app,
+        stream,
+        live: '1',
+        token,
+      }).toString()}`;
+
+      res.json({
+        token,
+        expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+        expiresInSeconds,
+        hlsUrl: appendTokenToPath(hlsPath, token),
+        flvUrl: appendTokenToPath(flvPath, token),
+        embedUrl,
+      });
+    })
+  );
+
+  router.get(
+    '/live/:app/:resource(*)',
+    asyncHandler(async (req, res) => {
+      const app = String(req.params.app ?? '').replace(/^\/+|\/+$/g, '');
+      const resource = String(req.params.resource ?? '').replace(/^\/+/, '');
+      if (!app || !resource) {
+        throw new NotFoundError('Playback target not found');
+      }
+
+      const output = await findPlaybackOutput(ctx, app, resource);
+      if (!output) {
+        throw new NotFoundError('Playback target not found');
+      }
+
+      await enforcePlaybackPolicy(ctx, app, output.gatewayStreamName, req);
+
+      if (isDirectBrowserNavigation(req)) {
+        throw new HttpError(403, 'Direct browser navigation to protected media is disabled');
+      }
+
+      const upstreamPath = `/${app}/${resource}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
+      const proxied = await proxyPlaybackFromSrs(upstreamPath);
+
+      let payload = proxied.body;
+      if (resource.endsWith('.m3u8') && proxied.status >= 200 && proxied.status < 300) {
+        const token = extractPlaybackToken(req) ?? undefined;
+        payload = Buffer.from(rewritePlaylist(proxied.body.toString('utf8'), app, token), 'utf8');
+      }
+
+      res.status(proxied.status);
+      if (proxied.contentType) {
+        res.setHeader('Content-Type', proxied.contentType);
+      }
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.end(payload);
+    })
+  );
+
+  return router;
+}

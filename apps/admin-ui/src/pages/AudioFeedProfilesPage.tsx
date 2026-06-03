@@ -63,7 +63,7 @@ const AudioFeedProfilesPage: React.FC = () => {
     <div>
       <PageHeader
         title="Audio Feed Profiles"
-        description="Extract audio derivatives from live or recorded streams — assign to stream keys"
+        description="Extract MP3/AAC/Opus from DVR or finalized recordings — assign profiles on each stream key"
         action={
           <Button variant="primary" onClick={() => setIsModalOpen(true)} disabled={locations.length === 0}>
             + New Audio Feed
@@ -105,7 +105,7 @@ const AudioFeedProfilesPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-400">{feed.storageLocationName ?? '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-400">
-                      {feed.generateDuringLive ? 'During live' : 'Post-recording'}
+                      {feed.generateDuringLive ? 'DVR at unpublish' : 'After recording'}
                     </td>
                     <RowActionsCell className="px-4 py-3">
                       <DeleteButton
@@ -194,9 +194,12 @@ const AudioFeedProfilesPage: React.FC = () => {
               onChange={(e) => setForm((f) => ({ ...f, generateDuringLive: e.target.checked }))}
               className="rounded border-slate-600 text-brand-500"
             />
-            Generate during live (otherwise post-recording only)
+            Extract from SRS DVR when stream ends (no recording policy)
           </label>
-          <p className="text-xs hf-muted">Audio extraction jobs are queued when wired — profiles are catalog-ready.</p>
+          <p className="text-xs hf-muted">
+            When a stream key has recording enabled, audio is always extracted from the finalized recording file
+            (better quality). DVR mode applies only if there is no active recording on unpublish.
+          </p>
           {submitError && <p className="text-sm text-red-400">{submitError}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>

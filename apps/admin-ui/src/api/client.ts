@@ -1,8 +1,12 @@
 import type {
   AudioFeedProfile,
   Application,
+  AuthResponse,
+  CurrentUserResponse,
   DomainBlock,
+  DvrWatchlistEntry,
   Input,
+  LivePlaybackInfo,
   LiveSession,
   Output,
   Paginated,
@@ -14,20 +18,65 @@ import type {
   Route,
   StorageLocation,
   StreamProfile,
+  SystemTelemetry,
+  User,
+  UserAccess,
+  UserAccessAssignment,
+  VodRoute,
+  VodRoutePlaybackInfo,
 } from './types';
 import { formatApiError } from '../lib/api-error';
 
 const API_BASE = '';
+const TOKEN_KEY = 'hf_auth_token';
+
+export const AUTH_SESSION_EXPIRED_EVENT = 'hydrofoil:auth-session-expired';
+
+function isPublicAuthRequest(path: string, method: string | undefined) {
+  if (method?.toUpperCase() === 'POST' && path.startsWith('/api/auth/')) {
+    return (
+      path === '/api/auth/login' ||
+      path === '/api/auth/forgot-password' ||
+      path === '/api/auth/request-access'
+    );
+  }
+  return false;
+}
+
+function notifySessionExpired(path: string, init?: RequestInit) {
+  if (typeof window === 'undefined') return;
+  if (!window.localStorage.getItem(TOKEN_KEY)) return;
+  if (isPublicAuthRequest(path, init?.method)) return;
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.dispatchEvent(new CustomEvent(AUTH_SESSION_EXPIRED_EVENT));
+}
+
+function authHeaders(init?: RequestInit): HeadersInit {
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (typeof window !== 'undefined') {
+    const token = window.localStorage.getItem(TOKEN_KEY);
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+  }
+  return headers;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: authHeaders(init),
     ...init,
   });
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const raw = (body as { error?: string }).error ?? `Request failed (${response.status})`;
+    if (response.status === 401) {
+      notifySessionExpired(path, init);
+    }
     throw new Error(formatApiError(raw));
   }
 
@@ -39,6 +88,36 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  login: (body: { email: string; password: string }) =>
+    request<AuthResponse>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  getCurrentUser: () => request<CurrentUserResponse>('/api/auth/me'),
+  forgotPassword: (body: { email: string }) =>
+    request<{ message: string; smtpConfigured: boolean }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  requestAccess: (body: { email: string; displayName?: string; message?: string }) =>
+    request<{ message: string; smtpConfigured: boolean; delivered: boolean }>(
+      '/api/auth/request-access',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    ),
+  updateProfile: (body: {
+    email?: string;
+    displayName?: string | null;
+    currentPassword?: string;
+    password?: string;
+  }) =>
+    request<CurrentUserResponse>('/api/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   listApplications: () => request<Paginated<Application>>('/api/applications?pageSize=100'),
   getApplication: (id: string) => request<Application>(`/api/applications/${id}`),
   getApplicationInputs: (id: string) =>
@@ -64,16 +143,34 @@ export const api = {
     streamKey: string;
     ingestProtocol: Input['ingestProtocol'];
     enabled?: boolean;
+    sourceRestrictions?: string[];
+    protocolConfig?: Input['protocolConfig'];
+    streamProfileId?: string | null;
+    recordingPolicyId?: string | null;
+    audioFeedProfileId?: string | null;
+    streamProfileIds?: string[];
+    recordingPolicyIds?: string[];
+    audioFeedProfileIds?: string[];
   }) => request<Input>('/api/inputs', { method: 'POST', body: JSON.stringify(body) }),
   updateInput: (
     id: string,
     body: Omit<
       Partial<Input>,
-      'recordingPolicyId' | 'streamProfileId' | 'audioFeedProfileId'
+      | 'recordingPolicyId'
+      | 'streamProfileId'
+      | 'audioFeedProfileId'
+      | 'recordingPolicyIds'
+      | 'streamProfileIds'
+      | 'audioFeedProfileIds'
     > & {
+      sourceRestrictions?: string[];
+      protocolConfig?: Input['protocolConfig'];
       recordingPolicyId?: string | null;
       streamProfileId?: string | null;
       audioFeedProfileId?: string | null;
+      recordingPolicyIds?: string[];
+      streamProfileIds?: string[];
+      audioFeedProfileIds?: string[];
     }
   ) =>
     request<Input>(`/api/inputs/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -147,12 +244,19 @@ export const api = {
   listDomainBlocks: () =>
     request<Paginated<DomainBlock>>('/api/domain-blocks?pageSize=100'),
   getDomainBlock: (id: string) =>
-    request<Record<string, unknown>>(`/api/domain-blocks/${id}`),
+    request<DomainBlock>(`/api/domain-blocks/${id}`),
   createDomainBlock: (body: Record<string, unknown>) =>
-    request<Record<string, unknown>>('/api/domain-blocks', {
+    request<DomainBlock>('/api/domain-blocks', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  updateDomainBlock: (id: string, body: Record<string, unknown>) =>
+    request<DomainBlock>(`/api/domain-blocks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteDomainBlock: (id: string) =>
+    request<void>(`/api/domain-blocks/${id}`, { method: 'DELETE' }),
 
   listStorageLocations: () =>
     request<Paginated<StorageLocation>>('/api/storage-locations?pageSize=100'),
@@ -164,10 +268,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  listRecordingPolicies: () =>
-    request<Paginated<RecordingPolicy>>('/api/recording-policies?pageSize=100'),
+  listRecordingPolicies: (purpose: 'attach' | 'manage' = 'manage') =>
+    request<Paginated<RecordingPolicy>>(
+      `/api/recording-policies?pageSize=100&purpose=${purpose}`
+    ),
   getRecordingPolicy: (id: string) =>
-    request<Record<string, unknown>>(`/api/recording-policies/${id}`),
+    request<RecordingPolicy>(`/api/recording-policies/${id}`),
   createRecordingPolicy: (body: {
     name: string;
     enabled?: boolean;
@@ -195,7 +301,7 @@ export const api = {
       keepSourceFlvHours: number | null;
     }>
   ) =>
-    request<Record<string, unknown>>(`/api/recording-policies/${id}`, {
+    request<RecordingPolicy>(`/api/recording-policies/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
@@ -204,6 +310,7 @@ export const api = {
 
   listStreamProfiles: () =>
     request<Paginated<StreamProfile>>('/api/stream-profiles?pageSize=100'),
+  getStreamProfile: (id: string) => request<StreamProfile>(`/api/stream-profiles/${id}`),
   createStreamProfile: (body: {
     name: string;
     mode: 'passthrough' | 'transcode';
@@ -216,8 +323,27 @@ export const api = {
     }>;
     audioHandling: 'copy' | 'aac' | 'opus';
   }) =>
-    request<Record<string, unknown>>('/api/stream-profiles', {
+    request<StreamProfile>('/api/stream-profiles', {
       method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateStreamProfile: (
+    id: string,
+    body: Partial<{
+      name: string;
+      mode: 'passthrough' | 'transcode';
+      renditions: Array<{
+        name: string;
+        videoBitrate: number;
+        videoCodec: string;
+        resolution: string;
+        fps: number;
+      }>;
+      audioHandling: 'copy' | 'aac' | 'opus';
+    }>
+  ) =>
+    request<StreamProfile>(`/api/stream-profiles/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(body),
     }),
   deleteStreamProfile: (id: string) =>
@@ -241,6 +367,106 @@ export const api = {
   deleteAudioFeedProfile: (id: string) =>
     request<void>(`/api/audio-feed-profiles/${id}`, { method: 'DELETE' }),
 
+  listUsers: () => request<Paginated<User>>('/api/users?pageSize=100'),
+  createUser: (body: {
+    email: string;
+    displayName?: string;
+    password?: string;
+    role?: User['role'];
+    isActive?: boolean;
+  }) =>
+    request<User>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateUser: (
+    id: string,
+    body: Partial<{
+      email: string;
+      displayName: string | null;
+      password: string;
+      role: User['role'];
+      isActive: boolean;
+    }>
+  ) =>
+    request<User>(`/api/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteUser: (id: string) => request<void>(`/api/users/${id}`, { method: 'DELETE' }),
+  getUserAccess: (id: string) => request<UserAccessAssignment>(`/api/users/${id}/access`),
+  updateUserAccess: (
+    id: string,
+    body: {
+      applicationIds: string[];
+      recordingPolicyIds?: string[];
+      vodRouteIds?: string[];
+      domainBlockIds?: string[];
+      storageLocationIds?: string[];
+    }
+  ) =>
+    request<UserAccess>(`/api/users/${id}/access`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  listDvrWatchlist: () =>
+    request<Paginated<DvrWatchlistEntry>>('/api/dvr-watchlist?pageSize=100'),
+  createDvrWatchlistEntry: (body: {
+    applicationName: string;
+    streamPattern?: string;
+    retentionHours?: number;
+    storageLocationId: string;
+    enabled?: boolean;
+  }) =>
+    request<DvrWatchlistEntry>('/api/dvr-watchlist', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateDvrWatchlistEntry: (
+    id: string,
+    body: Partial<{
+      streamPattern: string;
+      retentionHours: number;
+      storageLocationId: string;
+      enabled: boolean;
+    }>
+  ) =>
+    request<DvrWatchlistEntry>(`/api/dvr-watchlist/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteDvrWatchlistEntry: (id: string) =>
+    request<void>(`/api/dvr-watchlist/${id}`, { method: 'DELETE' }),
+
+  listVodRoutes: () => request<Paginated<VodRoute>>('/api/vod-routes?pageSize=100'),
+  getVodRoute: (id: string) => request<VodRoute>(`/api/vod-routes/${id}`),
+  createVodRoute: (body: {
+    name: string;
+    enabled?: boolean;
+    requestDomain?: string;
+    publicPath: string;
+    deliveryType: VodRoute['deliveryType'];
+    sourceType: VodRoute['sourceType'];
+    storageLocationId?: string;
+    sourcePath: string;
+    domainBlockId?: string;
+    allowDirectAccess?: boolean;
+    generateIframePlaylist?: boolean;
+  }) =>
+    request<VodRoute>('/api/vod-routes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateVodRoute: (id: string, body: Partial<VodRoute>) =>
+    request<VodRoute>(`/api/vod-routes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteVodRoute: (id: string) => request<void>(`/api/vod-routes/${id}`, { method: 'DELETE' }),
+  getVodRoutePlaybackInfo: (id: string) =>
+    request<VodRoutePlaybackInfo>(`/api/vod-routes/${id}/playback-url`),
+
   listStorageObjects: (locationId: string, prefix?: string) => {
     const qs = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
     return request<{
@@ -261,6 +487,19 @@ export const api = {
       `/api/storage-locations/${locationId}/objects/${encodeURIComponent(objectKey)}/signed-url${qs}`
     );
   },
+  createStorageFolder: (locationId: string, prefix: string) =>
+    request<{ bucketName: string; prefix: string }>(`/api/storage-locations/${locationId}/folders`, {
+      method: 'POST',
+      body: JSON.stringify({ prefix }),
+    }),
+  createStorageUploadUrl: (locationId: string, objectKey: string) =>
+    request<{ bucketName: string; objectKey: string; expirySeconds: number; url: string }>(
+      `/api/storage-locations/${locationId}/upload-url`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ objectKey }),
+      }
+    ),
   moveStorageObject: (locationId: string, objectKey: string, destinationObjectKey: string) =>
     request<{
       bucketName: string;
@@ -275,6 +514,19 @@ export const api = {
     request<void>(`/api/storage-locations/${locationId}/objects/${encodeURIComponent(objectKey)}`, {
       method: 'DELETE',
     }),
+  moveStorageFolder: (locationId: string, prefix: string, destinationPrefix: string) =>
+    request<{ bucketName: string; sourcePrefix: string; destinationPrefix: string; moved: number }>(
+      `/api/storage-locations/${locationId}/folders/${encodeURIComponent(prefix)}/move`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ destinationPrefix }),
+      }
+    ),
+  deleteStorageFolder: (locationId: string, prefix: string) =>
+    request<{ bucketName: string; prefix: string; deleted: number }>(
+      `/api/storage-locations/${locationId}/folders/${encodeURIComponent(prefix)}`,
+      { method: 'DELETE' }
+    ),
 
   listLiveSessions: (options?: { activeOnly?: boolean }) => {
     const qs = new URLSearchParams({ pageSize: '100' });
@@ -299,7 +551,18 @@ export const api = {
 
   deleteLiveSession: (id: string) => request<void>(`/api/live-sessions/${id}`, { method: 'DELETE' }),
 
+  issueLivePlaybackToken: (body: {
+    app: string;
+    stream: string;
+    expiresInSeconds?: number;
+  }) =>
+    request<LivePlaybackInfo>('/api/playback/live-token', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   getHealth: () => request<{ status: string; database: string }>('/api/health'),
+  getSystemTelemetry: () => request<SystemTelemetry>('/api/system/telemetry'),
   getGatewayStatus: () =>
     request<{
       engine: string;

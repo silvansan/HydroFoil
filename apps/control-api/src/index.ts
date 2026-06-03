@@ -5,6 +5,7 @@ import { QueueManager } from '@hydrofoil/queue';
 
 import { createApp } from './app';
 import { config } from './config';
+import { hashPassword } from './lib/auth';
 import { GatewayOrchestrator } from './services/gateway-orchestrator';
 import { RecordingOrchestrator } from './services/recording-orchestrator';
 import { RestreamOrchestrator } from './services/restream-orchestrator';
@@ -39,6 +40,8 @@ async function bootstrap() {
   const restreams = new RestreamOrchestrator(queueManager);
   const audio = new AudioOrchestrator(queueManager);
 
+  await ensureDefaultAdmin(organization.id, repos);
+
   const app = createApp({
     db,
     repos,
@@ -55,6 +58,29 @@ async function bootstrap() {
       { port: config.port, organizationId: organization.id, slug: organization.slug },
       'Control API listening'
     );
+  });
+}
+
+async function ensureDefaultAdmin(organizationId: string, repos: ReturnType<typeof createRepositories>) {
+  const existing = await repos.users.findByEmailWithPasswordHash(organizationId, config.defaultAdminEmail);
+  if (existing) {
+    if (!existing.password_hash || !existing.is_active) {
+      await repos.users.update(organizationId, existing.id, {
+        passwordHash: existing.password_hash ?? (await hashPassword(config.defaultAdminPassword)),
+        isActive: config.defaultAdminActive,
+        role: config.defaultAdminRole,
+      });
+    }
+    return;
+  }
+
+  const defaultPasswordHash = await hashPassword(config.defaultAdminPassword);
+  await repos.users.create(organizationId, {
+    email: config.defaultAdminEmail,
+    displayName: config.defaultAdminDisplayName,
+    passwordHash: defaultPasswordHash,
+    role: config.defaultAdminRole,
+    isActive: config.defaultAdminActive,
   });
 }
 

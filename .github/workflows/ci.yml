@@ -26,6 +26,7 @@ jobs:
         run: |
           npm run test -w @hydrofoil/domain
           npm run test -w @hydrofoil/db
+          npm run test -w @hydrofoil/control-api
 
       - name: Build workspace packages
         run: |
@@ -38,6 +39,7 @@ jobs:
           npm run build -w @hydrofoil/srs-adapter
           npm run build -w @hydrofoil/control-api
           npm run build -w @hydrofoil/media-worker
+          npm run build -w @hydrofoil/admin-ui
 
   prod-compose-smoke:
     runs-on: ubuntu-latest
@@ -46,18 +48,23 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build prod images
-        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml build control-api media-worker admin-ui
+        run: |
+          cp .env.ci .env.prod
+          docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml build control-api media-worker admin-ui
+
+      - name: Prepare prod env file
+        run: cp .env.ci .env.prod
 
       - name: Start prod stack
-        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgres redis minio migrate control-api media-worker srs admin-ui
+        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d postgres redis minio migrate control-api media-worker srs admin-ui
 
       - name: Prod smoke checks
         run: node scripts/prod-smoke.mjs
 
       - name: Compose logs on failure
         if: failure()
-        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --no-color control-api admin-ui media-worker
+        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml logs --no-color control-api admin-ui media-worker
 
       - name: Tear down
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
+        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml down -v

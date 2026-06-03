@@ -22,8 +22,9 @@
     "docker:up": "docker compose up --build -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d",
-    "docker:prod:build": "docker compose -f docker-compose.yml -f docker-compose.prod.yml build control-api media-worker admin-ui",
+    "env:prod": "node -e \"const fs=require('fs');const t='.env.prod.example';const d='.env.prod';if(fs.existsSync(d)){console.error(d+' already exists — edit it or delete first');process.exit(1)}fs.copyFileSync(t,d);console.log('Created '+d+' from '+t+'. Edit CHANGE_ME values before npm run docker:prod')\"",
+    "docker:prod": "docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up --build -d",
+    "docker:prod:build": "docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml build control-api media-worker admin-ui",
     "docker:prod:smoke": "node scripts/prod-smoke.mjs",
     "migrate": "npm run migrate -w @hydrofoil/db"
   },

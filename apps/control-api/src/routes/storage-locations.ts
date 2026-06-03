@@ -8,6 +8,13 @@ import { parsePagination } from '../lib/pagination';
 import { decryptStorageSecret, encryptStorageSecret } from '../lib/storage-secrets';
 import { config } from '../config';
 import { StorageClient, type StorageConfig } from '@hydrofoil/storage';
+import {
+  assertStorageLocationAccess,
+  canManageApplications,
+  filterStorageLocationsForScope,
+  getAccessScope,
+} from '../lib/access-control';
+import { ForbiddenError } from '../errors';
 
 const createStorageSchema = z.object({
   name: z.string().min(1),
@@ -26,6 +33,19 @@ const createStorageSchema = z.object({
 
 const moveObjectSchema = z.object({
   destinationObjectKey: z.string().min(1),
+});
+
+const createFolderSchema = z.object({
+  prefix: z.string().min(1),
+});
+
+const uploadUrlSchema = z.object({
+  objectKey: z.string().min(1),
+  expirySeconds: z.number().int().positive().max(60 * 60).optional(),
+});
+
+const moveFolderSchema = z.object({
+  destinationPrefix: z.string().min(1),
 });
 
 function assertObjectStorageLocation(location: { type: string }) {
@@ -47,11 +67,23 @@ function resolveLocationObjectKey(location: { prefixPath?: string | null }, obje
   return `${basePrefix}/${cleanKey}`;
 }
 
+function resolveLocationPrefix(location: { prefixPath?: string | null }, prefix: string): string {
+  const objectKey = resolveLocationObjectKey(location, prefix);
+  return objectKey.endsWith('/') ? objectKey : `${objectKey}/`;
+}
+
 type ObjectStorageLocation = NonNullable<
   Awaited<ReturnType<AppContext['repos']['storageLocations']['findByIdWithSecrets']>>
 >;
 
-async function loadObjectStorageLocation(ctx: AppContext, id: string): Promise<ObjectStorageLocation> {
+async function loadObjectStorageLocation(
+  ctx: AppContext,
+  id: string,
+  scope?: ReturnType<typeof getAccessScope>
+): Promise<ObjectStorageLocation> {
+  if (scope) {
+    assertStorageLocationAccess(scope, id);
+  }
   const location = await ctx.repos.storageLocations.findByIdWithSecrets(ctx.organizationId, id);
   if (!location) throw new NotFoundError('Storage location not found');
   assertObjectStorageLocation(location);
@@ -84,20 +116,23 @@ export function createStorageLocationsRouter(ctx: AppContext): Router {
   router.get(
     '/',
     asyncHandler(async (req, res) => {
-      res.json(await ctx.repos.storageLocations.list(ctx.organizationId, parsePagination(req)));
+      const scope = getAccessScope(req);
+      const result = await ctx.repos.storageLocations.list(ctx.organizationId, parsePagination(req));
+      const items = filterStorageLocationsForScope(result.items, scope);
+      res.json({ ...result, items, total: items.length });
     })
   );
 
   router.get(
     '/:id/objects',
     asyncHandler(async (req, res) => {
-      const location = await loadObjectStorageLocation(ctx, req.params.id);
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
 
       const subPrefix = typeof req.query.prefix === 'string' ? req.query.prefix.trim() : '';
       const basePrefix = normalizePrefix(location.prefixPath);
-      const combined = [basePrefix, subPrefix.replace(/^\/+|\/+$/g, '')]
-        .filter(Boolean)
-        .join('/');
+      const combined = subPrefix
+        ? normalizePrefix(resolveLocationObjectKey(location, subPrefix))
+        : basePrefix;
 
       const storage = storageClientForLocation(location);
       const objects = await storage.listObjects(
@@ -120,7 +155,7 @@ export function createStorageLocationsRouter(ctx: AppContext): Router {
   router.get(
     '/:id/objects/:objectKey(*)/stat',
     asyncHandler(async (req, res) => {
-      const location = await loadObjectStorageLocation(ctx, req.params.id);
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
       const objectKey = resolveLocationObjectKey(location, req.params.objectKey);
       const metadata = await storageClientForLocation(location).getObjectStat(String(location.bucketName), objectKey);
       res.json({ bucketName: location.bucketName, ...metadata });
@@ -130,7 +165,7 @@ export function createStorageLocationsRouter(ctx: AppContext): Router {
   router.get(
     '/:id/objects/:objectKey(*)/signed-url',
     asyncHandler(async (req, res) => {
-      const location = await loadObjectStorageLocation(ctx, req.params.id);
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
       const objectKey = resolveLocationObjectKey(location, req.params.objectKey);
       const expirySeconds =
         typeof req.query.expirySeconds === 'string'
@@ -150,12 +185,43 @@ export function createStorageLocationsRouter(ctx: AppContext): Router {
   );
 
   router.post(
+    '/:id/folders',
+    asyncHandler(async (req, res) => {
+      const parsed = createFolderSchema.safeParse(req.body);
+      if (!parsed.success) throw new BadRequestError(parsed.error.message);
+
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
+      const prefix = resolveLocationPrefix(location, parsed.data.prefix);
+      await storageClientForLocation(location).createFolder(String(location.bucketName), prefix);
+      res.status(201).json({ bucketName: location.bucketName, prefix });
+    })
+  );
+
+  router.post(
+    '/:id/upload-url',
+    asyncHandler(async (req, res) => {
+      const parsed = uploadUrlSchema.safeParse(req.body);
+      if (!parsed.success) throw new BadRequestError(parsed.error.message);
+
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
+      const objectKey = resolveLocationObjectKey(location, parsed.data.objectKey);
+      const expirySeconds = parsed.data.expirySeconds ?? 15 * 60;
+      const url = await storageClientForLocation(location).getSignedUploadUrl(
+        String(location.bucketName),
+        objectKey,
+        expirySeconds
+      );
+      res.json({ bucketName: location.bucketName, objectKey, expirySeconds, url });
+    })
+  );
+
+  router.post(
     '/:id/objects/:objectKey(*)/move',
     asyncHandler(async (req, res) => {
       const parsed = moveObjectSchema.safeParse(req.body);
       if (!parsed.success) throw new BadRequestError(parsed.error.message);
 
-      const location = await loadObjectStorageLocation(ctx, req.params.id);
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
       const sourceObjectKey = resolveLocationObjectKey(location, req.params.objectKey);
       const destinationObjectKey = resolveLocationObjectKey(
         location,
@@ -178,10 +244,48 @@ export function createStorageLocationsRouter(ctx: AppContext): Router {
     })
   );
 
+  router.post(
+    '/:id/folders/:prefix(*)/move',
+    asyncHandler(async (req, res) => {
+      const parsed = moveFolderSchema.safeParse(req.body);
+      if (!parsed.success) throw new BadRequestError(parsed.error.message);
+
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
+      const sourcePrefix = resolveLocationPrefix(location, req.params.prefix);
+      const destinationPrefix = resolveLocationPrefix(location, parsed.data.destinationPrefix);
+      const result = await storageClientForLocation(location).movePrefix(
+        String(location.bucketName),
+        sourcePrefix,
+        String(location.bucketName),
+        destinationPrefix
+      );
+
+      res.json({
+        bucketName: location.bucketName,
+        sourcePrefix,
+        destinationPrefix,
+        ...result,
+      });
+    })
+  );
+
+  router.delete(
+    '/:id/folders/:prefix(*)',
+    asyncHandler(async (req, res) => {
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
+      const prefix = resolveLocationPrefix(location, req.params.prefix);
+      const deleted = await storageClientForLocation(location).deletePrefix(
+        String(location.bucketName),
+        prefix
+      );
+      res.json({ bucketName: location.bucketName, prefix, deleted });
+    })
+  );
+
   router.delete(
     '/:id/objects/:objectKey(*)',
     asyncHandler(async (req, res) => {
-      const location = await loadObjectStorageLocation(ctx, req.params.id);
+      const location = await loadObjectStorageLocation(ctx, req.params.id, getAccessScope(req));
       const objectKey = resolveLocationObjectKey(location, req.params.objectKey);
       await storageClientForLocation(location).deleteObject(String(location.bucketName), objectKey);
       res.status(204).end();
@@ -191,6 +295,7 @@ export function createStorageLocationsRouter(ctx: AppContext): Router {
   router.get(
     '/:id',
     asyncHandler(async (req, res) => {
+      assertStorageLocationAccess(getAccessScope(req), req.params.id);
       const location = await ctx.repos.storageLocations.findById(
         ctx.organizationId,
         req.params.id
@@ -203,6 +308,9 @@ export function createStorageLocationsRouter(ctx: AppContext): Router {
   router.post(
     '/',
     asyncHandler(async (req, res) => {
+      if (!canManageApplications(getAccessScope(req))) {
+        throw new ForbiddenError('Only admins can create storage locations');
+      }
       const parsed = createStorageSchema.safeParse(req.body);
       if (!parsed.success) throw new BadRequestError(parsed.error.message);
       if (parsed.data.type === 's3') {

@@ -256,7 +256,7 @@ async function schedulePostRecordingAudio(
   if (!session) return;
 
   const input = await repos.inputs.findById(job.organizationId, String(session.inputId));
-  if (!input?.audioFeedProfileId) return;
+  if (!input?.audioFeedProfileId && (!input?.audioFeedProfileIds || input.audioFeedProfileIds.length === 0)) return;
 
   await scheduleAudioDerivatives({
     repos,
@@ -266,7 +266,10 @@ async function schedulePostRecordingAudio(
       name: String(input.name),
       organizationId: String(input.organizationId),
       streamKey: String(input.streamKey),
-      audioFeedProfileId: String(input.audioFeedProfileId),
+      audioFeedProfileId: input.audioFeedProfileId ? String(input.audioFeedProfileId) : undefined,
+      audioFeedProfileIds: Array.isArray(input.audioFeedProfileIds)
+        ? input.audioFeedProfileIds.map(String)
+        : undefined,
     },
     session: {
       id: String(session.id),
@@ -281,6 +284,9 @@ async function schedulePostRecordingAudio(
     recordingAssetId: String(recording.id),
     recordingObjectKey: String(recording.objectKey),
     durationSec: Number(recording.duration) || undefined,
+    sessionStartedAtMs: session.startedAt
+      ? new Date(String(session.startedAt)).getTime()
+      : undefined,
     enqueue: enqueueAudioAsset,
   });
 }

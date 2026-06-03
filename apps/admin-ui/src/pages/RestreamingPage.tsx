@@ -3,7 +3,7 @@ import { Copy } from 'lucide-react';
 import { PageHeader, Card, Button, Modal, TextInput } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
-import type { Input, RestreamDestination } from '../api/types';
+import type { Input, RestreamDestination, SrtProtocolConfig } from '../api/types';
 import { Alert } from '../components/Alert';
 import { FormError } from '../components/FormError';
 import { ClickableRow, RowActionsCell } from '../components/ClickableRow';
@@ -14,9 +14,16 @@ import { StreamMediaActions } from '../components/StreamMediaActions';
 import { useStreamPreviewModal } from '../hooks/useStreamPreviewModal';
 import { streamMediaTargetForRestreamRow } from '../lib/stream-media';
 import { errorMessage } from '../lib/api-error';
+import { SrtConnectionFormFields } from '../components/SrtConnectionFormFields';
 import { copyText } from '../lib/clipboard';
 import { isInputPublishing } from '../lib/live-status';
 import { usePublishingIndex } from '../hooks/usePublishingIndex';
+import {
+  buildSrtPublishStreamId,
+  canSubmitSrtConfig,
+  emptySrtConfig,
+  finalizeSrtPushUrl,
+} from '../lib/stream';
 
 type AddForm =
   | {
@@ -27,9 +34,7 @@ type AddForm =
   | {
       type: 'srt_external';
       name: string;
-      pushUrl: string;
-      srtStreamId: string;
-      passphrase: string;
+      srtConfig: SrtProtocolConfig;
       latency: string;
     }
   | {
@@ -48,15 +53,6 @@ const emptyExternalForm = (): AddForm => ({
   type: 'rtmp_external',
   name: '',
   pushUrl: '',
-});
-
-const emptySrtForm = (): AddForm => ({
-  type: 'srt_external',
-  name: '',
-  pushUrl: '',
-  srtStreamId: '',
-  passphrase: '',
-  latency: '',
 });
 
 const deliveryLabel: Record<RestreamDestination['delivery'], string> = {
@@ -143,6 +139,15 @@ const RestreamingPage: React.FC = () => {
         gatewayAppName: input.application?.appName ?? 'live',
         gatewayStreamName: addForm.gatewayStreamName,
       });
+    } else if (addForm.type === 'srt_external' && input) {
+      const app = input.application?.appName ?? 'live';
+      setAddForm({
+        ...addForm,
+        srtConfig: {
+          ...addForm.srtConfig,
+          streamid: buildSrtPublishStreamId(app, input.streamKey),
+        },
+      });
     }
   };
 
@@ -162,8 +167,8 @@ const RestreamingPage: React.FC = () => {
       setSubmitError('Enter an RTMP push URL');
       return;
     }
-    if (addForm.type === 'srt_external' && !addForm.pushUrl.trim()) {
-      setSubmitError('Enter an SRT push URL (srt://host:port)');
+    if (addForm.type === 'srt_external' && !canSubmitSrtConfig(addForm.srtConfig)) {
+      setSubmitError('Complete the SRT connection settings (host or listen port)');
       return;
     }
     if (
@@ -184,13 +189,19 @@ const RestreamingPage: React.FC = () => {
         });
       } else if (addForm.type === 'srt_external') {
         const latency = addForm.latency.trim() ? Number(addForm.latency) : undefined;
+        const pushUrl = finalizeSrtPushUrl(
+          addForm.srtConfig,
+          latency != null && !Number.isNaN(latency) ? latency : undefined
+        );
+        if (!pushUrl) {
+          setSubmitError('Could not build SRT push URL from the connection settings');
+          setIsSubmitting(false);
+          return;
+        }
         await api.createRestream(selectedInputId, {
           type: 'srt_external',
           name,
-          pushUrl: addForm.pushUrl.trim(),
-          srtStreamId: addForm.srtStreamId.trim() || undefined,
-          passphrase: addForm.passphrase.trim() || undefined,
-          latency: latency != null && !Number.isNaN(latency) ? latency : undefined,
+          pushUrl,
         });
       } else {
         await api.createRestream(selectedInputId, {
@@ -390,7 +401,19 @@ const RestreamingPage: React.FC = () => {
                     if (kind === 'rtmp_external') {
                       setAddForm(emptyExternalForm());
                     } else if (kind === 'srt_external') {
-                      setAddForm(emptySrtForm());
+                      const streamKey = selectedInput?.streamKey ?? '';
+                      const nextSrt: Extract<AddForm, { type: 'srt_external' }> = {
+                        type: 'srt_external',
+                        name: addForm.name,
+                        latency: '',
+                        srtConfig: {
+                          ...emptySrtConfig('caller'),
+                          streamid: streamKey
+                            ? buildSrtPublishStreamId(app, streamKey)
+                            : '',
+                        },
+                      };
+                      setAddForm(nextSrt);
                     } else {
                       setAddForm({
                         type: 'rtmp_mirror',
@@ -427,34 +450,20 @@ const RestreamingPage: React.FC = () => {
                 />
               ) : addForm.type === 'srt_external' ? (
                 <>
-                  <TextInput
-                    label="SRT push URL"
-                    placeholder="srt://192.168.1.50:10080"
-                    value={addForm.pushUrl}
-                    onChange={(e) =>
-                      setAddForm((f) =>
-                        f.type === 'srt_external' ? { ...f, pushUrl: e.target.value } : f
-                      )
+                  <SrtConnectionFormFields
+                    variant="push"
+                    idPrefix="restream-srt"
+                    config={addForm.srtConfig}
+                    onChange={(srtConfig) =>
+                      setAddForm((f) => (f.type === 'srt_external' ? { ...f, srtConfig } : f))
                     }
-                  />
-                  <TextInput
-                    label="Stream ID (optional)"
-                    placeholder="#!::r=live/your-key,m=publish"
-                    value={addForm.srtStreamId}
-                    onChange={(e) =>
-                      setAddForm((f) =>
-                        f.type === 'srt_external' ? { ...f, srtStreamId: e.target.value } : f
-                      )
-                    }
-                  />
-                  <TextInput
-                    label="Passphrase (optional)"
-                    placeholder="10–79 characters if required by receiver"
-                    value={addForm.passphrase}
-                    onChange={(e) =>
-                      setAddForm((f) =>
-                        f.type === 'srt_external' ? { ...f, passphrase: e.target.value } : f
-                      )
+                    defaultStreamId={
+                      selectedInput
+                        ? buildSrtPublishStreamId(
+                            selectedInput.application?.appName ?? 'live',
+                            selectedInput.streamKey
+                          )
+                        : undefined
                     }
                   />
                   <TextInput
@@ -468,8 +477,8 @@ const RestreamingPage: React.FC = () => {
                     }
                   />
                   <p className="text-xs hf-muted">
-                    FFmpeg pushes from SRS when the source stream key goes live. SRT destinations are
-                    not forwarded by SRS directly.
+                    When the source stream key goes live, FFmpeg pushes to this SRT destination using the
+                    mode and address above (not via SRS forward).
                   </p>
                 </>
               ) : (

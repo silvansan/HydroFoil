@@ -179,6 +179,7 @@ export const SCHEMA = {
       type VARCHAR(50) NOT NULL,
       bucket_name VARCHAR(255) NOT NULL,
       prefix_path VARCHAR(1024),
+      local_path TEXT,
       is_default BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -191,7 +192,9 @@ export const SCHEMA = {
       name VARCHAR(255) NOT NULL,
       enabled BOOLEAN DEFAULT true,
       storage_location_id UUID NOT NULL REFERENCES storage_locations(id),
+      archive_storage_location_id UUID REFERENCES storage_locations(id) ON DELETE SET NULL,
       path_prefix VARCHAR(1024) NOT NULL,
+      archive_path_prefix VARCHAR(1024),
       filename_template VARCHAR(1024) NOT NULL,
       retention_days INTEGER,
       segmentation_options JSONB,
@@ -227,6 +230,41 @@ export const SCHEMA = {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(organization_id, slug)
+    )
+  `,
+  users: `
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      email VARCHAR(255) NOT NULL,
+      display_name VARCHAR(255),
+      password_hash TEXT,
+      role VARCHAR(50) NOT NULL DEFAULT 'manager',
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(organization_id, email),
+      CHECK (role IN ('super-admin', 'admin', 'manager'))
+    )
+  `,
+  vod_routes: `
+    CREATE TABLE IF NOT EXISTS vod_routes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      enabled BOOLEAN DEFAULT true,
+      request_domain VARCHAR(255),
+      public_path VARCHAR(1024) NOT NULL,
+      delivery_type VARCHAR(50) NOT NULL,
+      source_type VARCHAR(50) NOT NULL,
+      storage_location_id UUID REFERENCES storage_locations(id) ON DELETE SET NULL,
+      source_path VARCHAR(2048) NOT NULL,
+      domain_block_id UUID REFERENCES domain_blocks(id) ON DELETE SET NULL,
+      allow_direct_access BOOLEAN DEFAULT false,
+      generate_iframe_playlist BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(organization_id, public_path)
     )
   `,
   stream_profiles: `

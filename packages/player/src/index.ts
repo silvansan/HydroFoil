@@ -9,6 +9,7 @@ export type {
   HydroFoilPlaybackMode,
   HydroFoilScriptEmbedOptions,
   HydroFoilIframeEmbedOptions,
+  LiveEmbedPageUrlOptions,
 } from './types';
 
 import { buildHydroFoilScriptEmbed } from './embed';

@@ -32,6 +32,9 @@ export interface Input extends BaseEntity {
   streamProfileId?: string;
   recordingPolicyId?: string;
   audioFeedProfileId?: string;
+  streamProfileIds?: string[];
+  recordingPolicyIds?: string[];
+  audioFeedProfileIds?: string[];
   application?: Pick<Application, 'id' | 'name' | 'appName'>;
 }
 
@@ -86,6 +89,39 @@ export interface DomainBlock extends BaseEntity {
   };
   playbackAccessPolicy: 'public' | 'token-required' | 'restricted';
   tokenRequired: boolean;
+}
+
+export interface User extends BaseEntity {
+  organizationId: string;
+  email: string;
+  displayName?: string;
+  role: 'super-admin' | 'admin' | 'manager';
+  isActive: boolean;
+}
+
+export interface VodRoute extends BaseEntity {
+  organizationId: string;
+  name: string;
+  enabled: boolean;
+  requestDomain?: string;
+  publicPath: string;
+  deliveryType: 'hls' | 'progressive';
+  sourceType: 'storage-location' | 'remote-http';
+  storageLocationId?: string;
+  sourcePath: string;
+  domainBlockId?: string;
+  allowDirectAccess: boolean;
+  generateIframePlaylist: boolean;
+}
+
+export interface DvrWatchlistEntry extends BaseEntity {
+  organizationId: string;
+  applicationId?: string;
+  applicationName?: string;
+  streamPattern?: string;
+  retentionHours: number;
+  storageLocationId: string;
+  enabled: boolean;
 }
 
 export interface RecordingPolicy extends BaseEntity {
@@ -186,6 +222,55 @@ export interface GatewayConfigVersion extends BaseEntity {
   appliedConfig?: Record<string, unknown>;
   syncedAt?: Date;
   error?: string;
+}
+
+export interface SystemCpuTelemetry {
+  usagePercent: number | null;
+  loadAverage1m: number;
+  loadAverage5m: number;
+  loadAverage15m: number;
+  coreCount: number;
+  model: string;
+  sampledAt: string;
+}
+
+export interface SystemMemoryTelemetry {
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
+  usagePercent: number;
+  processRssBytes: number;
+  sampledAt: string;
+}
+
+export interface SystemGpuDeviceTelemetry {
+  name: string;
+  utilizationPercent: number | null;
+  memoryTotalBytes: number | null;
+  memoryUsedBytes: number | null;
+  memoryUsagePercent: number | null;
+  temperatureC: number | null;
+  driverVersion?: string;
+}
+
+export interface SystemGpuTelemetry {
+  available: boolean;
+  vendor?: string;
+  devices: SystemGpuDeviceTelemetry[];
+  note?: string;
+  sampledAt: string;
+}
+
+export interface SystemTelemetry {
+  host: {
+    hostname: string;
+    platform: string;
+    arch: string;
+    uptimeSeconds: number;
+  };
+  cpu: SystemCpuTelemetry;
+  memory: SystemMemoryTelemetry;
+  gpu: SystemGpuTelemetry;
 }
 
 // API Request/Response types

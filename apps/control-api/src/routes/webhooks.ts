@@ -127,40 +127,47 @@ export function createWebhooksRouter(ctx: AppContext): Router {
           return;
         }
 
-        const durationSec = recordingDurationSec(
-          active.startedAt instanceof Date ? active.startedAt : String(active.startedAt)
-        );
+        const sessionStartedAt =
+          active.startedAt instanceof Date
+            ? active.startedAt
+            : new Date(String(active.startedAt));
+        const durationSec = recordingDurationSec(sessionStartedAt);
+        const sessionStartedAtMs = sessionStartedAt.getTime();
 
-        await ctx.audio.scheduleForSession({
-          organizationId: ctx.organizationId,
-          input: {
-            id: String(input.id),
-            name: String(input.name),
-            organizationId: String(input.organizationId),
-            streamKey: String(input.streamKey),
-            audioFeedProfileId: input.audioFeedProfileId
-              ? String(input.audioFeedProfileId)
-              : undefined,
-          },
-          session: {
-            id: String(active.id),
-            startedAt:
-              active.startedAt instanceof Date
-                ? active.startedAt
-                : new Date(String(active.startedAt)),
-          },
-          trigger: 'live',
-          gatewayApp,
-          streamKey,
-          durationSec,
-          repos: ctx.repos,
-        });
-
-        const activeRecording = await ctx.repos.recordingAssets.findActiveBySessionId(
+        const activeRecordings = await ctx.repos.recordingAssets.listActiveBySessionId(
           ctx.organizationId,
           active.id
         );
-        if (activeRecording) {
+
+        // When a recording will finalize, audio is extracted from the uploaded recording (higher quality, no DVR race).
+        if (activeRecordings.length === 0) {
+          await ctx.audio.scheduleForSession({
+            organizationId: ctx.organizationId,
+            input: {
+              id: String(input.id),
+              name: String(input.name),
+              organizationId: String(input.organizationId),
+              streamKey: String(input.streamKey),
+              audioFeedProfileId: input.audioFeedProfileId
+                ? String(input.audioFeedProfileId)
+                : undefined,
+              audioFeedProfileIds: Array.isArray(input.audioFeedProfileIds)
+                ? input.audioFeedProfileIds.map(String)
+                : undefined,
+            },
+            session: {
+              id: String(active.id),
+              startedAt: sessionStartedAt,
+            },
+            trigger: 'live',
+            gatewayApp,
+            streamKey,
+            durationSec,
+            sessionStartedAtMs,
+            repos: ctx.repos,
+          });
+        }
+        for (const activeRecording of activeRecordings) {
           const target = toFinalizeTarget(activeRecording);
           const durationSec = recordingDurationSec(target.startedAt);
           await ctx.recordings.scheduleFinalize(

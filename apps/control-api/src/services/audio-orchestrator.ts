@@ -20,7 +20,7 @@ export class AudioOrchestrator {
 
   async scheduleForSession(params: {
     organizationId: string;
-    input: Pick<Input, 'id' | 'name' | 'organizationId' | 'streamKey' | 'audioFeedProfileId'>;
+    input: Pick<Input, 'id' | 'name' | 'organizationId' | 'streamKey' | 'audioFeedProfileId' | 'audioFeedProfileIds'>;
     session: Pick<LiveSession, 'id' | 'startedAt'>;
     trigger: 'live' | 'post-recording';
     gatewayApp: string;
@@ -28,6 +28,7 @@ export class AudioOrchestrator {
     recordingAssetId?: string;
     recordingObjectKey?: string;
     durationSec?: number;
+    sessionStartedAtMs?: number;
     repos: Parameters<typeof scheduleAudioDerivatives>[0]['repos'];
   }): Promise<number> {
     const count = await scheduleAudioDerivatives({
@@ -41,6 +42,7 @@ export class AudioOrchestrator {
       recordingAssetId: params.recordingAssetId,
       recordingObjectKey: params.recordingObjectKey,
       durationSec: params.durationSec,
+      sessionStartedAtMs: params.sessionStartedAtMs,
       enqueue: (job) => enqueueGenerateAudioAsset(this.audioQueue, job),
     });
 

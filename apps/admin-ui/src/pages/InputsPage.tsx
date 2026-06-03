@@ -21,9 +21,12 @@ import { applicationLiveCount, isInputPublishing } from '../lib/live-status';
 import { slugifyAppName } from '../lib/app-slug';
 import { ClickableRow, RowActionsCell } from '../components/ClickableRow';
 import { CopyableUrl } from '../components/CopyableUrl';
-import { rtmpIngestUrl } from '../lib/stream';
+import { canSubmitInputForm, generateIngestUrl, resolveInputStreamKey } from '../lib/stream';
+import { canManageApplications, useAuth } from '../auth/AuthContext';
 
 const InputsPage: React.FC = () => {
+  const { user } = useAuth();
+  const allowAppManagement = canManageApplications(user?.role);
   const {
     items: applications,
     isLoading: appsLoading,
@@ -136,8 +139,13 @@ const InputsPage: React.FC = () => {
     try {
       await api.updateInput(editTarget.input.id, {
         name: editForm.name.trim(),
-        streamKey: editForm.streamKey.trim(),
+        streamKey: resolveInputStreamKey(
+          editForm.name,
+          editForm.ingestProtocol,
+          editForm.streamKey
+        ),
         ingestProtocol: editForm.ingestProtocol,
+        protocolConfig: editForm.protocolConfig,
         enabled: editEnabled,
       });
       setEditTarget(null);
@@ -165,15 +173,20 @@ const InputsPage: React.FC = () => {
   };
 
   const handleCreateInput = async () => {
-    if (!inputModal || !inputForm.name.trim() || !inputForm.streamKey.trim()) return;
+    if (!inputModal || !canSubmitInputForm(inputForm)) return;
     setInputSubmitting(true);
     setInputSubmitError(null);
     try {
       await api.createInput({
         applicationId: inputModal.applicationId,
         name: inputForm.name.trim(),
-        streamKey: inputForm.streamKey.trim(),
+        streamKey: resolveInputStreamKey(
+          inputForm.name,
+          inputForm.ingestProtocol,
+          inputForm.streamKey
+        ),
         ingestProtocol: inputForm.ingestProtocol,
+        protocolConfig: inputForm.protocolConfig,
         enabled: true,
       });
       setInputModal(null);
@@ -194,11 +207,13 @@ const InputsPage: React.FC = () => {
         title="Inputs"
         description="Applications are events or venues (SRS app paths). Click a stream key row for settings."
         action={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={openAppModal}>
-              + Add application
-            </Button>
-          </div>
+          allowAppManagement ? (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={openAppModal}>
+                + Add application
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
@@ -306,7 +321,12 @@ const InputsPage: React.FC = () => {
                         </div>
                         <RowActionsCell as="div" className="flex items-center gap-2">
                           <CopyableUrl
-                            url={rtmpIngestUrl(input.streamKey, app.appName)}
+                            url={generateIngestUrl(
+                              input.ingestProtocol,
+                              input.streamKey,
+                              input.protocolConfig,
+                              app.appName
+                            )}
                             className="text-xs max-w-md hidden lg:inline"
                             onCopied={notify}
                           />
@@ -408,9 +428,7 @@ const InputsPage: React.FC = () => {
             <Button
               variant="primary"
               onClick={handleCreateInput}
-              disabled={
-                !inputForm.name.trim() || !inputForm.streamKey.trim() || inputSubmitting
-              }
+              disabled={!canSubmitInputForm(inputForm) || inputSubmitting}
             >
               {inputSubmitting ? 'Saving…' : 'Create stream key'}
             </Button>

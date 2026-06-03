@@ -26,3 +26,8 @@ export function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error) return formatApiError(err.message);
   return fallback;
 }
+
+export function isAuthSessionError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('authentication') || lower.includes('sign in');
+}

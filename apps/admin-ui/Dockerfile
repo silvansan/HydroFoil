@@ -19,6 +19,9 @@ COPY packages/shared-types packages/shared-types
 COPY packages/ui-kit packages/ui-kit
 COPY packages/player packages/player
 
+ARG VITE_WEBRTC_ICE_SERVERS=stun:stun.l.google.com:19302
+ENV VITE_WEBRTC_ICE_SERVERS=$VITE_WEBRTC_ICE_SERVERS
+
 RUN npm run build -w @hydrofoil/admin-ui
 
 FROM nginx:1.27-alpine

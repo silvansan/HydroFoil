@@ -11,6 +11,12 @@ import {
 } from '../services/recording-playback';
 import { publisherStatsForSession, fetchSrsPublisherStatsByIngest } from '../services/srs-publisher-stats';
 import { syncLiveSessionsFromSrs } from '../services/live-session-sync';
+import { filterLiveSessionsByInputScope, getAccessScope } from '../lib/access-control';
+
+async function buildInputApplicationMap(ctx: AppContext): Promise<Map<string, string>> {
+  const inputs = await ctx.repos.inputs.listAll(ctx.organizationId);
+  return new Map(inputs.map((input: { id: string; applicationId: string }) => [input.id, input.applicationId]));
+}
 
 export function createLiveSessionsRouter(ctx: AppContext): Router {
   const router = Router();
@@ -19,6 +25,7 @@ export function createLiveSessionsRouter(ctx: AppContext): Router {
     '/',
     asyncHandler(async (req, res) => {
       await syncLiveSessionsFromSrs(ctx);
+      const scope = getAccessScope(req);
       const pagination = parsePagination(req);
       const statusParam = req.query.status;
       const status =
@@ -33,7 +40,13 @@ export function createLiveSessionsRouter(ctx: AppContext): Router {
           ctx.repos.liveSessions.listPublishing(ctx.organizationId),
           fetchSrsPublisherStatsByIngest(),
         ]);
-        const enriched = items.map((session: { gatewayApp?: string; streamKey: string }) => ({
+        const inputAppMap = await buildInputApplicationMap(ctx);
+        const filtered = filterLiveSessionsByInputScope(
+          items as Array<{ inputId: string; gatewayApp?: string; streamKey: string }>,
+          scope,
+          inputAppMap
+        );
+        const enriched = filtered.map((session) => ({
           ...session,
           publisher: publisherStatsForSession(
             statsByIngest,
@@ -51,11 +64,16 @@ export function createLiveSessionsRouter(ctx: AppContext): Router {
         return;
       }
 
-      res.json(
-        await ctx.repos.liveSessions.list(ctx.organizationId, pagination, {
-          status,
-        })
+      const result = await ctx.repos.liveSessions.list(ctx.organizationId, pagination, {
+        status,
+      });
+      const inputAppMap = await buildInputApplicationMap(ctx);
+      const items = filterLiveSessionsByInputScope(
+        result.items as Array<{ inputId: string }>,
+        scope,
+        inputAppMap
       );
+      res.json({ ...result, items, total: items.length });
     })
   );
 
@@ -115,14 +133,19 @@ export function createRecordingsRouter(ctx: AppContext): Router {
   router.get(
     '/',
     asyncHandler(async (req, res) => {
-      res.json(await ctx.repos.recordingAssets.list(ctx.organizationId, parsePagination(req)));
+      res.json(
+        await ctx.repos.recordingAssets.listWithContext(ctx.organizationId, parsePagination(req))
+      );
     })
   );
 
   router.get(
     '/:id',
     asyncHandler(async (req, res) => {
-      const asset = await ctx.repos.recordingAssets.findById(ctx.organizationId, req.params.id);
+      const asset = await ctx.repos.recordingAssets.findByIdWithContext(
+        ctx.organizationId,
+        req.params.id
+      );
       if (!asset) {
         throw new NotFoundError('Recording not found');
       }

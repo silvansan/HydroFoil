@@ -29,3 +29,10 @@ export interface HydroFoilIframeEmbedOptions {
   height?: number | string;
   title?: string;
 }
+
+export interface LiveEmbedPageUrlOptions {
+  streamKey: string;
+  app?: string;
+  origin?: string;
+  token?: string;
+}

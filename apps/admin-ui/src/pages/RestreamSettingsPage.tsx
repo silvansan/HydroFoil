@@ -3,14 +3,23 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Card, TextInput, Button } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
-import type { Input, RestreamDestination } from '../api/types';
+import type { Input, RestreamDestination, SrtProtocolConfig } from '../api/types';
 import { Alert } from '../components/Alert';
+import { SrtConnectionFormFields } from '../components/SrtConnectionFormFields';
 import { ResourceSettingsLayout } from '../components/ResourceSettingsLayout';
 import { RowActions } from '../components/RowActions';
 import { StreamMediaActions } from '../components/StreamMediaActions';
 import { useStreamPreviewModal } from '../hooks/useStreamPreviewModal';
 import { streamMediaTargetForRestreamRow } from '../lib/stream-media';
 import { CopyableUrl } from '../components/CopyableUrl';
+import {
+  buildSrtPublishStreamId,
+  canSubmitSrtConfig,
+  emptySrtConfig,
+  finalizeSrtPushUrl,
+  parseSrtIngestUrl,
+  parseSrtLatencyMs,
+} from '../lib/stream';
 
 const RestreamSettingsPage: React.FC = () => {
   const { destinationId } = useParams<{ destinationId: string }>();
@@ -19,11 +28,15 @@ const RestreamSettingsPage: React.FC = () => {
   const [input, setInput] = React.useState<Input | null>(null);
   const [name, setName] = React.useState('');
   const [pushUrl, setPushUrl] = React.useState('');
+  const [srtConfig, setSrtConfig] = React.useState<SrtProtocolConfig>(emptySrtConfig('caller'));
+  const [latency, setLatency] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
   const [toast, setToast] = React.useState<string | null>(null);
   const { openPreview, previewModal } = useStreamPreviewModal();
+
+  const isSrtExternal = destination?.kind === 'external' && destination.delivery === 'srt';
 
   const load = React.useCallback(async () => {
     if (!destinationId) return;
@@ -31,7 +44,17 @@ const RestreamSettingsPage: React.FC = () => {
     setDestination(data.destination);
     setInput(data.input);
     setName(data.destination.name);
-    setPushUrl(data.destination.kind === 'external' ? data.destination.copyUrl : '');
+    const url = data.destination.kind === 'external' ? data.destination.copyUrl : '';
+    setPushUrl(url);
+    if (data.destination.delivery === 'srt' && url) {
+      const parsed = parseSrtIngestUrl(url) ?? emptySrtConfig('caller');
+      setSrtConfig(parsed);
+      const latencyMs = parseSrtLatencyMs(url);
+      setLatency(latencyMs != null ? String(latencyMs) : '');
+    } else {
+      setSrtConfig(emptySrtConfig('caller'));
+      setLatency('');
+    }
   }, [destinationId]);
 
   React.useEffect(() => {
@@ -48,9 +71,28 @@ const RestreamSettingsPage: React.FC = () => {
     setIsSaving(true);
     setSaveError(null);
     try {
+      let nextPushUrl = pushUrl.trim();
+      if (isSrtExternal) {
+        if (!canSubmitSrtConfig(srtConfig)) {
+          setSaveError('Complete the SRT connection settings (host or listen port)');
+          setIsSaving(false);
+          return;
+        }
+        const latencyMs = latency.trim() ? Number(latency) : undefined;
+        nextPushUrl = finalizeSrtPushUrl(
+          srtConfig,
+          latencyMs != null && !Number.isNaN(latencyMs) ? latencyMs : undefined
+        );
+        if (!nextPushUrl) {
+          setSaveError('Could not build SRT push URL');
+          setIsSaving(false);
+          return;
+        }
+      }
+
       await api.updateRestream(destinationId, {
         name: name.trim(),
-        ...(destination?.kind === 'external' ? { pushUrl: pushUrl.trim() } : {}),
+        ...(destination?.kind === 'external' ? { pushUrl: nextPushUrl } : {}),
       });
       await load();
       notify('Restream saved');
@@ -63,6 +105,10 @@ const RestreamSettingsPage: React.FC = () => {
 
   const mediaTarget =
     input && destination ? streamMediaTargetForRestreamRow(input, destination) : null;
+
+  const defaultStreamId = input
+    ? buildSrtPublishStreamId(input.application?.appName ?? 'live', input.streamKey)
+    : undefined;
 
   return (
     <ResourceSettingsLayout
@@ -103,16 +149,45 @@ const RestreamSettingsPage: React.FC = () => {
       {destination && input && (
         <Card className="p-6 space-y-4 max-w-xl">
           <TextInput label="Destination name" value={name} onChange={(e) => setName(e.target.value)} />
-          {destination.kind === 'external' && (
+          {isSrtExternal ? (
+            <>
+              <SrtConnectionFormFields
+                variant="push"
+                idPrefix="restream-edit-srt"
+                config={srtConfig}
+                onChange={setSrtConfig}
+                defaultStreamId={defaultStreamId}
+              />
+              <TextInput
+                label="Latency ms (optional)"
+                placeholder="300"
+                value={latency}
+                onChange={(e) => setLatency(e.target.value)}
+              />
+            </>
+          ) : destination.kind === 'external' ? (
             <TextInput
-              label={destination.delivery === 'srt' ? 'SRT push URL' : 'RTMP push URL'}
+              label="RTMP push URL"
               value={pushUrl}
               onChange={(e) => setPushUrl(e.target.value)}
             />
-          )}
+          ) : null}
           <div>
-            <p className="text-sm font-medium text-slate-300 mb-1">Target URL</p>
-            <CopyableUrl url={destination.copyUrl} className="text-xs break-all" onCopied={notify} />
+            <p className="text-sm font-medium text-slate-300 mb-1">Resolved target URL</p>
+            <CopyableUrl
+              url={
+                isSrtExternal
+                  ? finalizeSrtPushUrl(
+                      srtConfig,
+                      latency.trim() && !Number.isNaN(Number(latency))
+                        ? Number(latency)
+                        : undefined
+                    ) || destination.copyUrl
+                  : destination.copyUrl
+              }
+              className="text-xs break-all"
+              onCopied={notify}
+            />
           </div>
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button variant="primary" onClick={handleSave} disabled={isSaving}>

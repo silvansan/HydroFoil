@@ -2,6 +2,7 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { HydroFoilPlayer } from '@hydrofoil/player';
+import { protectedLivePlaybackPath } from '../lib/playback';
 
 /** Standalone embed page for iframe — no admin chrome. */
 const EmbedPlayerPage: React.FC = () => {
@@ -10,13 +11,19 @@ const EmbedPlayerPage: React.FC = () => {
   const app = params.get('app') ?? 'live';
   const stream = params.get('stream') ?? '';
   const srcParam = params.get('src');
+  const token = params.get('token') ?? '';
   const title = params.get('title') ?? (stream ? `${app}/${stream}` : 'HydroFoil');
   const isLive = params.get('live') !== '0';
 
   const src =
     srcParam ??
     (stream
-      ? `/srs-media/${app.replace(/^\/+|\/+$/g, '')}/${stream.replace(/^\/+|\/+$/g, '')}.m3u8`
+      ? protectedLivePlaybackPath(
+          app.replace(/^\/+|\/+$/g, ''),
+          stream.replace(/^\/+|\/+$/g, ''),
+          'm3u8',
+          token || undefined
+        )
       : '');
 
   if (!src) {

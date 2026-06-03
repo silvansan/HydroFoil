@@ -1,0 +1,294 @@
+# =============================================================================
+# HydroFoil — Portainer stack (paste this entire file into the stack Web editor)
+# =============================================================================
+#
+# Pair with environment variables from: deploy/portainer/.env.example
+# (or upload deploy/portainer/.env.copypaste after editing CHANGE_ME values)
+#
+# RECOMMENDED (easiest, no SSH on the server):
+#   Portainer → Stacks → Add stack → Git repository
+#   Repository URL:  https://github.com/silvansan/HydroFoil.git
+#   Repository reference: main  (or your release branch)
+#   Compose path:      deploy/portainer/PORTAINER_STACK.yml
+#   Environment:       paste / upload from .env.example (see deploy/portainer/README.md)
+#
+# WEB EDITOR (paste this file):
+#   Works when the Portainer agent can build from a git clone — set
+#   HYDROFOIL_BUILD_CONTEXT to the absolute repo path on the host, OR prefer Git repository above.
+#
+# After deploy: open PUBLIC_APP_URL (or http://host:ADMIN_UI_PORT), sign in, change password.
+# =============================================================================
+
+name: hydrofoil
+
+configs:
+  hydrofoil_srs_conf:
+    content: |
+      max_connections     1000;
+      srs_log_tank        console;
+      rtmp {
+          listen          1935;
+      }
+      http_api {
+          enabled         on;
+          listen          1985;
+      }
+      http_server {
+          enabled         on;
+          listen          8080;
+          dir             ./objs/nginx/html;
+      }
+      srt_server {
+          enabled         on;
+          listen          10080;
+          default_app     live;
+      }
+      rtc_server {
+          enabled         on;
+          listen          8000;
+          candidate       127.0.0.1;
+      }
+      vhost localhost {
+          http_hooks {
+              enabled         on;
+              on_publish      http://control-api:3001/api/webhooks/srs;
+              on_unpublish    http://control-api:3001/api/webhooks/srs;
+          }
+          forward {
+              enabled         on;
+              backend         http://control-api:3001/api/webhooks/srs/forward;
+          }
+          hls { enabled on; }
+          http_remux {
+              enabled     on;
+              mount       [vhost]/[app]/[stream].flv;
+          }
+          dvr {
+              enabled             on;
+              dvr_path            ./objs/nginx/html/dvr/[app]/[stream].[timestamp].flv;
+              dvr_plan            session;
+              dvr_wait_keyframe   on;
+          }
+          rtc {
+              enabled         on;
+              rtmp_to_rtc     on;
+              rtc_to_rtmp     on;
+          }
+          srt {
+              enabled         on;
+              srt_to_rtmp     on;
+          }
+      }
+      vhost __defaultVhost__ {
+          http_hooks {
+              enabled         on;
+              on_publish      http://control-api:3001/api/webhooks/srs;
+              on_unpublish    http://control-api:3001/api/webhooks/srs;
+          }
+          forward {
+              enabled         on;
+              backend         http://control-api:3001/api/webhooks/srs/forward;
+          }
+          hls { enabled on; }
+          http_remux {
+              enabled     on;
+              mount       [vhost]/[app]/[stream].flv;
+          }
+          dvr {
+              enabled             on;
+              dvr_path            ./objs/nginx/html/dvr/[app]/[stream].[timestamp].flv;
+              dvr_plan            session;
+              dvr_wait_keyframe   on;
+          }
+          rtc {
+              enabled         on;
+              rtmp_to_rtc     on;
+              rtc_to_rtmp     on;
+          }
+          srt {
+              enabled         on;
+              srt_to_rtmp     on;
+          }
+      }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hydrofoil}
+      POSTGRES_USER: ${POSTGRES_USER:-hydrofoil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-hydrofoil}']
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ':9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:9000/minio/health/live']
+      interval: 15s
+      timeout: 5s
+      retries: 8
+
+  migrate:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: docker/Dockerfile.dev
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      sh -lc "npm run build -w @hydrofoil/shared-types
+      && npm run build -w @hydrofoil/domain
+      && npm run build -w @hydrofoil/queue
+      && npm run build -w @hydrofoil/db
+      && npm run migrate"
+
+  control-api:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/control-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      RUN_MIGRATIONS_ON_START: ${RUN_MIGRATIONS_ON_START:-true}
+      DEFAULT_ORGANIZATION_SLUG: ${DEFAULT_ORGANIZATION_SLUG:-default}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:?set DEFAULT_ADMIN_EMAIL}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?set DEFAULT_ADMIN_PASSWORD}
+      DEFAULT_ADMIN_DISPLAY_NAME: ${DEFAULT_ADMIN_DISPLAY_NAME:-HydroFoil Admin}
+      DEFAULT_ADMIN_ROLE: ${DEFAULT_ADMIN_ROLE:-super-admin}
+      DEFAULT_ADMIN_ACTIVE: ${DEFAULT_ADMIN_ACTIVE:-true}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?set AUTH_TOKEN_SECRET}
+      PLAYBACK_TOKEN_SECRET: ${PLAYBACK_TOKEN_SECRET:?set PLAYBACK_TOKEN_SECRET}
+      PLAYBACK_TOKEN_TTL_SECONDS: ${PLAYBACK_TOKEN_TTL_SECONDS:-3600}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY}
+      SRS_HTTP_API_URL: ${SRS_HTTP_API_URL:-http://srs:1985}
+      SRS_PLAYBACK_BASE_URL: ${SRS_PLAYBACK_BASE_URL:-http://srs:8080}
+      SRS_RTMP_FORWARD_BASE: ${SRS_RTMP_FORWARD_BASE:-rtmp://127.0.0.1:1935}
+      SRS_RTMP_READ_BASE: ${SRS_RTMP_READ_BASE:-rtmp://srs:1935}
+      SRS_WEBHOOK_SECRET: ${SRS_WEBHOOK_SECRET:-}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?set MINIO_PUBLIC_ENDPOINT}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_ADMIN_TO: ${SMTP_ADMIN_TO:-}
+    ports:
+      - '${CONTROL_API_PORT:-3001}:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  media-worker:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/media-worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT}
+      SRS_HTTP_API_URL: ${SRS_HTTP_API_URL:-http://srs:1985}
+      SRS_RTMP_READ_BASE: ${SRS_RTMP_READ_BASE:-rtmp://srs:1935}
+      SRS_DVR_ROOT: /srs-dvr
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      RECORDING_TRANSCODE_HLS: ${RECORDING_TRANSCODE_HLS:-true}
+    volumes:
+      - srs_data:/srs-dvr:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      control-api:
+        condition: service_started
+
+  srs:
+    image: ossrs/srs:5
+    restart: unless-stopped
+    ports:
+      - '${SRS_RTMP_PORT:-1935}:1935'
+      - '${SRS_HTTP_PORT:-8080}:8080'
+      - '${SRS_API_PORT:-1985}:1985'
+      - '${SRS_WEBRTC_UDP_PORT:-8000}:8000/udp'
+      - '${SRS_WEBRTC_TCP_PORT:-8000}:8000/tcp'
+      - '${SRS_SRT_PORT:-10080}:10080/udp'
+    configs:
+      - source: hydrofoil_srs_conf
+        target: /usr/local/srs/conf/srs.conf
+    volumes:
+      - srs_data:/usr/local/srs/objs/nginx/html
+    depends_on:
+      control-api:
+        condition: service_started
+    healthcheck:
+      test: ['CMD-SHELL', ': >/dev/tcp/127.0.0.1/1985']
+      interval: 20s
+      timeout: 5s
+      retries: 6
+
+  admin-ui:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/admin-ui/Dockerfile
+      args:
+        VITE_WEBRTC_ICE_SERVERS: ${VITE_WEBRTC_ICE_SERVERS:-stun:stun.l.google.com:19302}
+    restart: unless-stopped
+    ports:
+      - '${ADMIN_UI_PORT:-3000}:80'
+    depends_on:
+      control-api:
+        condition: service_started
+      srs:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  srs_data:
