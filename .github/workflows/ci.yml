@@ -53,24 +53,21 @@ jobs:
       - name: Build prod images
         run: |
           cp .env.ci .env.prod
-          docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml build control-api media-worker admin-ui
+          docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.ci.yml build control-api media-worker admin-ui
 
       - name: Prepare prod env file
         run: cp .env.ci .env.prod
 
       - name: Start prod stack
-        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d postgres redis minio migrate control-api media-worker srs admin-ui
+        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.ci.yml up -d postgres redis minio migrate control-api media-worker srs admin-ui
 
       - name: Prod smoke checks
-        run: node scripts/prod-smoke.mjs
-        env:
-          PUBLIC_APP_URL: http://localhost:13080
-          SMOKE_UI_URL: http://localhost:13080
+        run: node scripts/ci-smoke.mjs
 
       - name: Compose logs on failure
         if: failure()
-        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml logs --no-color control-api admin-ui media-worker
+        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.ci.yml logs --no-color control-api admin-ui media-worker
 
       - name: Tear down
         if: always()
-        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml down -v
+        run: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.ci.yml down -v

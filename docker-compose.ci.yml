@@ -1,0 +1,7 @@
+# CI smoke overrides — avoid binding host ports on shared GitHub runners.
+services:
+  control-api:
+    ports: !reset []
+
+  admin-ui:
+    ports: !reset []
