@@ -3,6 +3,7 @@
  * Smoke-test prod stack in CI without host port bindings (see docker-compose.ci.yml).
  */
 import { execSync } from 'node:child_process';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const COMPOSE =
   process.env.COMPOSE_CMD ??
@@ -12,6 +13,15 @@ function execIn(service, shellCommand) {
   execSync(`${COMPOSE} exec -T ${service} sh -c ${JSON.stringify(shellCommand)}`, {
     stdio: 'inherit',
   });
+}
+
+const waitDeadline = Date.now() + 90_000;
+while (Date.now() < waitDeadline) {
+  const running = execSync(`${COMPOSE} ps --status running --services`, { encoding: 'utf8' });
+  if (running.includes('admin-ui') && running.includes('control-api')) {
+    break;
+  }
+  await sleep(3000);
 }
 
 console.log('CI smoke: control-api /health');
