@@ -19,15 +19,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check control-api
-        run: npm run type-check -w @hydrofoil/control-api
-
-      - name: Unit tests
-        run: |
-          npm run test -w @hydrofoil/domain
-          npm run test -w @hydrofoil/db
-          npm run test -w @hydrofoil/control-api
-
       - name: Build workspace packages
         run: |
           npm run build -w @hydrofoil/shared-types
@@ -37,6 +28,18 @@ jobs:
           npm run build -w @hydrofoil/queue
           npm run build -w @hydrofoil/storage
           npm run build -w @hydrofoil/srs-adapter
+
+      - name: Type-check control-api
+        run: npm run type-check -w @hydrofoil/control-api
+
+      - name: Unit tests
+        run: |
+          npm run test -w @hydrofoil/domain
+          npm run test -w @hydrofoil/db
+          npm run test -w @hydrofoil/control-api
+
+      - name: Build apps
+        run: |
           npm run build -w @hydrofoil/control-api
           npm run build -w @hydrofoil/media-worker
           npm run build -w @hydrofoil/admin-ui
