@@ -23,9 +23,9 @@ jobs:
         run: |
           npm run build -w @hydrofoil/shared-types
           npm run build -w @hydrofoil/domain
-          npm run build -w @hydrofoil/db
           npm run build -w @hydrofoil/events
           npm run build -w @hydrofoil/queue
+          npm run build -w @hydrofoil/db
           npm run build -w @hydrofoil/storage
           npm run build -w @hydrofoil/srs-adapter
 
