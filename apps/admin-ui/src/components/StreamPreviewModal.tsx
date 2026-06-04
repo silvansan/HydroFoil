@@ -62,7 +62,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
   const isLive = status === 'publishing';
 
-  const [urlChoice, setUrlChoice] = React.useState<UrlChoice>(isLive ? 'hls' : 'hls');
+  const [urlChoice, setUrlChoice] = React.useState<UrlChoice>(isLive ? 'flv' : 'hls');
 
   const [toast, setToast] = React.useState<string | null>(null);
   const [protectedPlayback, setProtectedPlayback] = React.useState<{
@@ -306,7 +306,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
             />
           ) : (
 
-            <FlvPlayer src={protectedPlayback?.flvUrl ?? urls.flv} />
+            <FlvPlayer src={flvAbsolute} />
 
           )}
 

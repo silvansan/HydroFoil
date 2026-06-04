@@ -9,6 +9,14 @@ interface FlvPlayerProps {
   isLive?: boolean;
 }
 
+function resolvePlayerUrl(src: string): string {
+  if (!src || src.startsWith('http://') || src.startsWith('https://')) return src;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${src.startsWith('/') ? src : `/${src}`}`;
+  }
+  return src;
+}
+
 /** HTTP-FLV player (SRS http_remux live monitor or VOD .flv). */
 export const FlvPlayer: React.FC<FlvPlayerProps> = ({
   src,
@@ -18,10 +26,11 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
 }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const playUrl = React.useMemo(() => resolvePlayerUrl(src), [src]);
 
   React.useEffect(() => {
     const video = videoRef.current;
-    if (!video || !src) return;
+    if (!video || !playUrl) return;
 
     setError(null);
 
@@ -33,7 +42,7 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
     const player = mpegts.createPlayer(
       {
         type: 'flv',
-        url: src,
+        url: playUrl,
         isLive: isLive,
         hasAudio: true,
         hasVideo: true,
@@ -68,7 +77,7 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
       player.detachMediaElement();
       player.destroy();
     };
-  }, [src, autoPlay, isLive]);
+  }, [playUrl, autoPlay, isLive]);
 
   return (
     <div className="relative">
