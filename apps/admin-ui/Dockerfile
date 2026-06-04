@@ -14,6 +14,7 @@ RUN npm config set fetch-retries 5 \
  && npm config set fetch-retry-maxtimeout 120000 \
  && npm ci --workspace=@hydrofoil/admin-ui --include-workspace-root
 
+COPY tsconfig.json ./
 COPY apps/admin-ui apps/admin-ui
 COPY packages/shared-types packages/shared-types
 COPY packages/ui-kit packages/ui-kit
