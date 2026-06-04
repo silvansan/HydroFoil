@@ -5,7 +5,12 @@ import { Button, Card } from '@hydrofoil/ui-kit';
 import { api } from '../api/client';
 import { HlsPlayer } from './HlsPlayer';
 import { SessionStatusBadge } from './SessionStatusBadge';
-import { absoluteHlsUrl, buildLiveIframeEmbedCode, playbackUrlsForIngest } from '../lib/playback';
+import {
+  absoluteHlsUrl,
+  buildLiveIframeEmbedCode,
+  playbackUrlsForIngest,
+} from '../lib/playback';
+import { useLivePlaybackResolve } from '../hooks/useLivePlaybackResolve';
 import { copyText } from '../lib/clipboard';
 import { rtmpIngestUrl } from '../lib/stream';
 
@@ -28,6 +33,12 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
     hlsUrl: string;
     embedUrl: string;
   } | null>(null);
+  const isPublishing = status === 'publishing';
+  const playback = useLivePlaybackResolve(gatewayApp, streamKey, {
+    enabled: true,
+    refreshMs: isPublishing ? 10000 : 0,
+  });
+  const hlsPlayUrl = playback.playerHlsUrl ?? absoluteHlsUrl(streamKey, gatewayApp);
   const urls = React.useMemo(
     () => playbackUrlsForIngest(streamKey, gatewayApp),
     [streamKey, gatewayApp]
@@ -90,6 +101,9 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
                 {status !== 'publishing' && (
                   <span className="text-xs text-slate-500">Preview may be offline</span>
                 )}
+                {isPublishing && !playback.loading && !playback.playable && (
+                  <span className="text-xs text-amber-400">Waiting for playable HLS from SRS</span>
+                )}
               </div>
             )}
           </div>
@@ -104,7 +118,7 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          <HlsPlayer src={absoluteHlsUrl(streamKey, gatewayApp)} />
+          <HlsPlayer src={hlsPlayUrl} />
 
           <div className="flex flex-wrap gap-2">
             <Button

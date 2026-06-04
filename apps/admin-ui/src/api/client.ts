@@ -7,6 +7,7 @@ import type {
   DvrWatchlistEntry,
   Input,
   LivePlaybackInfo,
+  LivePlaybackResolve,
   LiveSession,
   Output,
   Paginated,
@@ -563,6 +564,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  resolveLivePlayback: (params: { app: string; stream: string }) => {
+    const q = new URLSearchParams({
+      app: params.app,
+      stream: params.stream,
+    });
+    return request<LivePlaybackResolve>(`/api/playback/resolve?${q.toString()}`);
+  },
 
   getHealth: () => request<{ status: string; database: string }>('/api/health'),
   getSystemTelemetry: () => request<SystemTelemetry>('/api/system/telemetry'),

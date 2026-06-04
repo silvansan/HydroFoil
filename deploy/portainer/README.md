@@ -39,6 +39,23 @@ https://raw.githubusercontent.com/silvansan/HydroFoil/main/deploy/portainer/PORT
 
 ---
 
+## Live preview / playback (after deploy)
+
+1. Wait for [Publish container images](https://github.com/silvansan/HydroFoil/actions/workflows/publish-images.yml) after pulling latest `main`.
+2. **Update the stack** (fresh `PORTAINER_STACK.yml` includes SRS `http_remux` mount `[app]/[stream].flv`).
+3. **Recreate** `srs`, `control-api`, and `admin-ui` so new images and SRS config apply.
+4. While vMix/OBS is live, open preview — the UI calls `GET /api/playback/resolve` and plays the URLs SRS reports (not guessed paths).
+
+Internal check from the server:
+
+```bash
+curl -s "http://127.0.0.1:3001/api/playback/resolve?app=gtch&stream=YOUR_STREAM" -H "Authorization: Bearer YOUR_JWT"
+```
+
+`playable: true` means HLS/FLV returned 200 from SRS.
+
+---
+
 ## Error: `error from registry: denied`
 
 Usually one of:

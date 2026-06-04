@@ -255,6 +255,19 @@ export interface LivePlaybackInfo {
   embedUrl: string;
 }
 
+/** Resolved SRS playback paths for operator preview (from GET /api/playback/resolve). */
+export interface LivePlaybackResolve {
+  active: boolean;
+  playable: boolean;
+  vhost: string;
+  app: string;
+  stream: string;
+  monitorFlvUrl: string;
+  playerHlsUrl: string;
+  protectedHlsUrl: string;
+  protectedFlvUrl: string;
+}
+
 export interface VodRoute {
   id: string;
   organizationId: string;

@@ -62,7 +62,7 @@ configs:
           }
           http_remux {
               enabled     on;
-              mount       [vhost]/[app]/[stream].flv;
+              mount       [app]/[stream].flv;
           }
           dvr {
               enabled             on;
@@ -100,7 +100,7 @@ configs:
           }
           http_remux {
               enabled     on;
-              mount       [vhost]/[app]/[stream].flv;
+              mount       [app]/[stream].flv;
           }
           dvr {
               enabled             on;

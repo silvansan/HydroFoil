@@ -14,15 +14,13 @@ import { HydroFoilPlayer } from '@hydrofoil/player';
 import { SessionStatusBadge } from './SessionStatusBadge';
 
 import {
-
   absoluteFlvUrl,
   absoluteHlsUrl,
-
   buildHlsEmbedCode,
   buildLiveIframeEmbedCode,
   playbackUrlsForIngest,
-
 } from '../lib/playback';
+import { useLivePlaybackResolve } from '../hooks/useLivePlaybackResolve';
 
 import { ClickableStreamUrl } from './CopyableUrl';
 
@@ -60,9 +58,15 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
   const { streamKey, gatewayApp, label, status } = target;
 
-  const isLive = status === 'publishing';
+  const isPublishing = status === 'publishing';
 
-  const [urlChoice, setUrlChoice] = React.useState<UrlChoice>(isLive ? 'flv' : 'hls');
+  const [urlChoice, setUrlChoice] = React.useState<UrlChoice>(isPublishing ? 'flv' : 'hls');
+
+  const playback = useLivePlaybackResolve(gatewayApp, streamKey, {
+    enabled: true,
+    refreshMs: isPublishing ? 10000 : 0,
+  });
+  const isPlayable = playback.playable;
 
   const [toast, setToast] = React.useState<string | null>(null);
   const [protectedPlayback, setProtectedPlayback] = React.useState<{
@@ -84,25 +88,8 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
 
 
-  const hlsAbsolute = React.useMemo(
-
-    () => absoluteHlsUrl(streamKey, gatewayApp),
-
-    [streamKey, gatewayApp]
-
-  );
-
-
-
-  const flvAbsolute = React.useMemo(
-
-    () => absoluteFlvUrl(streamKey, gatewayApp),
-
-    [streamKey, gatewayApp]
-
-  );
-
-
+  const hlsPlayUrl = playback.playerHlsUrl ?? absoluteHlsUrl(streamKey, gatewayApp);
+  const flvPlayUrl = playback.monitorFlvUrl ?? absoluteFlvUrl(streamKey, gatewayApp);
 
   const selectedUrl =
     urlChoice === 'hls'
@@ -114,7 +101,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
         }`
       : protectedPlayback?.flvUrl
         ? `${window.location.origin}${protectedPlayback.flvUrl}`
-        : flvAbsolute;
+        : flvPlayUrl;
 
 
 
@@ -218,9 +205,13 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
                 <SessionStatusBadge status={status} />
 
                 {status !== 'publishing' && (
-
                   <span className="text-xs text-slate-500">Preview may be offline</span>
-
+                )}
+                {isPublishing && !playback.loading && !isPlayable && (
+                  <span className="text-xs text-amber-400">
+                    Publishing on SRS — waiting for playable media
+                    {playback.resolved?.vhost ? ` (vhost ${playback.resolved.vhost})` : ''}
+                  </span>
                 )}
 
               </div>
@@ -299,15 +290,13 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
           {urlChoice === 'hls' ? (
             <HydroFoilPlayer
-              src={hlsAbsolute}
+              src={hlsPlayUrl}
               title={label ?? `${gatewayApp}/${streamKey}`}
-              isLive={isLive}
+              isLive={isPlayable}
               playbackMode="live-hls"
             />
           ) : (
-
-            <FlvPlayer src={flvAbsolute} />
-
+            <FlvPlayer src={flvPlayUrl} isLive={isPlayable} />
           )}
 
 
@@ -393,7 +382,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
                   window.open(
                     protectedPlayback?.flvUrl
                       ? `${window.location.origin}${protectedPlayback.flvUrl}`
-                      : flvAbsolute,
+                      : flvPlayUrl,
                     '_blank',
                     'noopener,noreferrer'
                   )

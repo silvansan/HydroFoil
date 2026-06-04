@@ -7,8 +7,9 @@ import type { AppContext } from '../context';
 import { config } from '../config';
 import { BadRequestError, HttpError, NotFoundError } from '../errors';
 import { asyncHandler } from '../middleware/async-handler';
-import { fetchFromSrsUpstream } from '../lib/srs-upstream-fetch';
+import { proxySrsMediaToResponse } from '../lib/proxy-srs-media';
 import { PlaybackTokenService } from '../services/playback-token';
+import { resolveLivePlayback } from '../services/playback-resolver';
 
 const issuePlaybackTokenSchema = z.object({
   app: z.string().min(1),
@@ -209,14 +210,47 @@ async function resolvePlaybackOutput(
   return output;
 }
 
-async function proxyPlaybackFromSrs(resourcePath: string) {
-  const pathOnly = resourcePath.split('?')[0] ?? resourcePath;
-  const query = resourcePath.includes('?') ? resourcePath.slice(resourcePath.indexOf('?')) : '';
-  return fetchFromSrsUpstream(`${pathOnly}${query}`);
+/** Operator preview: allow registered inputs (ingest) without a separate output row. */
+async function assertOperatorPlaybackTarget(ctx: AppContext, app: string, stream: string) {
+  const input = await ctx.repos.inputs.findByAppAndStreamKey(
+    ctx.organizationId,
+    app,
+    stream
+  );
+  if (input?.enabled) {
+    return;
+  }
+  await resolvePlaybackOutput(ctx, app, stream);
 }
 
 export function createPlaybackRouter(ctx: AppContext): Router {
   const router = Router();
+
+  router.get(
+    '/resolve',
+    asyncHandler(async (req, res) => {
+      const app = String(req.query.app ?? '').replace(/^\/+|\/+$/g, '');
+      const stream = String(req.query.stream ?? '').replace(/^\/+|\/+$/g, '');
+      if (!app || !stream) {
+        throw new BadRequestError('Query params app and stream are required');
+      }
+
+      await assertOperatorPlaybackTarget(ctx, app, stream);
+      const resolved = await resolveLivePlayback(app, stream, { probe: true });
+
+      res.json({
+        active: resolved.active,
+        playable: resolved.playable,
+        vhost: resolved.vhost,
+        app: resolved.app,
+        stream: resolved.stream,
+        monitorFlvUrl: resolved.srsMediaFlv,
+        playerHlsUrl: resolved.srsMediaHls,
+        protectedHlsUrl: resolved.protectedHls,
+        protectedFlvUrl: resolved.protectedFlv,
+      });
+    })
+  );
 
   router.post(
     '/live-token',
@@ -238,8 +272,9 @@ export function createPlaybackRouter(ctx: AppContext): Router {
         exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
       });
 
-      const hlsPath = `/api/playback/live/${app}/${stream}.m3u8`;
-      const flvPath = `/api/playback/live/${app}/${stream}.flv`;
+      const playback = await resolveLivePlayback(app, stream, { probe: false });
+      const hlsPath = playback.protectedHls;
+      const flvPath = playback.protectedFlv;
       const embedUrl = `/embed?${new URLSearchParams({
         app,
         stream,
@@ -268,31 +303,31 @@ export function createPlaybackRouter(ctx: AppContext): Router {
       }
 
       const output = await findPlaybackOutput(ctx, app, resource);
-      if (!output) {
-        throw new NotFoundError('Playback target not found');
+      if (output) {
+        await enforcePlaybackPolicy(ctx, app, output.gatewayStreamName, req);
+      } else {
+        const streamFromFile = (resource.split('/').pop() ?? resource).replace(/\.(m3u8|flv|ts)$/i, '');
+        const input = await ctx.repos.inputs.findByAppAndStreamKey(
+          ctx.organizationId,
+          app,
+          streamFromFile
+        );
+        if (!input?.enabled) {
+          throw new NotFoundError('Playback target not found');
+        }
       }
-
-      await enforcePlaybackPolicy(ctx, app, output.gatewayStreamName, req);
 
       if (isDirectBrowserNavigation(req)) {
         throw new HttpError(403, 'Direct browser navigation to protected media is disabled');
       }
 
-      const upstreamPath = `/${app}/${resource}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
-      const proxied = await proxyPlaybackFromSrs(upstreamPath);
-
-      let payload = proxied.body;
-      if (resource.endsWith('.m3u8') && proxied.status >= 200 && proxied.status < 300) {
-        const token = extractPlaybackToken(req) ?? undefined;
-        payload = Buffer.from(rewritePlaylist(proxied.body.toString('utf8'), app, token), 'utf8');
-      }
-
-      res.status(proxied.status);
-      if (proxied.contentType) {
-        res.setHeader('Content-Type', proxied.contentType);
-      }
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.end(payload);
+      const token = extractPlaybackToken(req) ?? undefined;
+      await proxySrsMediaToResponse(`${app}/${resource}`, res, {
+        rewriteM3u8Prefix: '/api/playback/live',
+        rewritePlaylist: resource.endsWith('.m3u8')
+          ? (body) => rewritePlaylist(body, app, token)
+          : undefined,
+      });
     })
   );
 
