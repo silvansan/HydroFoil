@@ -10,6 +10,7 @@ COPY packages/db/package.json packages/db/
 COPY packages/events/package.json packages/events/
 COPY packages/queue/package.json packages/queue/
 COPY packages/storage/package.json packages/storage/
+COPY apps/srs-adapter/package.json apps/srs-adapter/
 COPY apps/control-api/package.json apps/control-api/
 
 RUN npm ci --workspace=@hydrofoil/control-api --include-workspace-root
@@ -20,6 +21,7 @@ COPY packages/db packages/db
 COPY packages/events packages/events
 COPY packages/queue packages/queue
 COPY packages/storage packages/storage
+COPY apps/srs-adapter apps/srs-adapter
 COPY apps/control-api apps/control-api
 COPY tsconfig.json ./
 
@@ -29,6 +31,7 @@ RUN npm run build -w @hydrofoil/shared-types \
  && npm run build -w @hydrofoil/db \
  && npm run build -w @hydrofoil/events \
  && npm run build -w @hydrofoil/storage \
+ && npm run build -w @hydrofoil/srs-adapter \
  && npm run build -w @hydrofoil/control-api
 
 FROM node:20-alpine
@@ -46,6 +49,7 @@ COPY packages/db/package.json packages/db/
 COPY packages/events/package.json packages/events/
 COPY packages/queue/package.json packages/queue/
 COPY packages/storage/package.json packages/storage/
+COPY apps/srs-adapter/package.json apps/srs-adapter/
 COPY apps/control-api/package.json apps/control-api/
 
 RUN npm ci --workspace=@hydrofoil/control-api --include-workspace-root --omit=dev
@@ -56,6 +60,7 @@ COPY --from=build /app/packages/db/dist packages/db/dist
 COPY --from=build /app/packages/events/dist packages/events/dist
 COPY --from=build /app/packages/queue/dist packages/queue/dist
 COPY --from=build /app/packages/storage/dist packages/storage/dist
+COPY --from=build /app/apps/srs-adapter/dist apps/srs-adapter/dist
 COPY --from=build /app/apps/control-api/dist apps/control-api/dist
 COPY packages/db/migrations packages/db/migrations
 

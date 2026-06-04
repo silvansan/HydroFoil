@@ -19,6 +19,7 @@
     "@hydrofoil/events": "*",
     "@hydrofoil/queue": "*",
     "@hydrofoil/shared-types": "*",
+    "@hydrofoil/srs-adapter": "*",
     "@hydrofoil/storage": "*",
     "axios": "^1.5.0",
     "express": "^4.18.0",

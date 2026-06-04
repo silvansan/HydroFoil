@@ -39,6 +39,22 @@ https://raw.githubusercontent.com/silvansan/HydroFoil/main/deploy/portainer/PORT
 
 ---
 
+## Error: `error from registry: denied`
+
+Usually one of:
+
+1. **Images not published yet** — [Publish container images](https://github.com/silvansan/HydroFoil/actions/workflows/publish-images.yml) must be **green** (all three jobs). If it failed, fix CI and re-run the workflow, then redeploy.
+2. **Private GHCR packages** — [github.com/silvansan?tab=packages](https://github.com/silvansan?tab=packages) → each `hydrofoil-*` → **Package settings** → **Change visibility** → **Public**.
+3. **Private packages + auth** — Portainer → **Registries** → add `ghcr.io` with a GitHub PAT (`read:packages`).
+
+Test from the server (anonymous pull should work when public):
+
+```bash
+docker pull ghcr.io/silvansan/hydrofoil-control-api:latest
+```
+
+---
+
 ## Error: `lstat .../docker: no such file or directory`
 
 You pasted **`PORTAINER_STACK.build.yml`** or an old stack with `build:` / `migrate:` services.
