@@ -63,6 +63,9 @@ jobs:
 
       - name: Prod smoke checks
         run: node scripts/prod-smoke.mjs
+        env:
+          PUBLIC_APP_URL: http://localhost:13080
+          SMOKE_UI_URL: http://localhost:13080
 
       - name: Compose logs on failure
         if: failure()
