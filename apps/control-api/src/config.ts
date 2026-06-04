@@ -15,8 +15,11 @@ export const config = {
   playbackTokenSecret: process.env.PLAYBACK_TOKEN_SECRET ?? 'hydrofoil-dev-playback-secret',
   playbackTokenTtlSeconds: Number(process.env.PLAYBACK_TOKEN_TTL_SECONDS ?? 3600),
   srsWebhookSecret: process.env.SRS_WEBHOOK_SECRET ?? '',
-  /** RTMP base used when SRS asks for dynamic forward URLs (on_forward hook). */
+  /** Public RTMP ingest base (OBS/encoders + operator UI copy links). */
   srsRtmpForwardBase: process.env.SRS_RTMP_FORWARD_BASE ?? 'rtmp://127.0.0.1:1935',
+  /** Public SRT listener/caller host (defaults from PUBLIC_APP_URL or RTMP base hostname). */
+  srsSrtPublicHost: process.env.SRS_SRT_PUBLIC_HOST ?? '',
+  srsSrtPublicPort: Number(process.env.SRS_SRT_PUBLIC_PORT ?? 10080),
   /** RTMP base for media-worker to read from SRS (Docker: rtmp://srs:1935). */
   srsRtmpReadBase: process.env.SRS_RTMP_READ_BASE ?? process.env.SRS_RTMP_FORWARD_BASE ?? 'rtmp://127.0.0.1:1935',
   srsPlaybackBaseUrl: process.env.SRS_PLAYBACK_BASE_URL ?? 'http://127.0.0.1:8080',

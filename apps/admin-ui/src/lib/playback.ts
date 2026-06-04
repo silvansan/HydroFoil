@@ -4,6 +4,8 @@ import {
   buildLiveEmbedPageUrl,
 } from '@hydrofoil/player';
 
+import { rtmpIngestBase } from './operator-urls';
+
 const PLAYBACK_BASE =
   import.meta.env.VITE_SRS_PLAYBACK_BASE?.replace(/\/$/, '') ?? '/srs-media';
 
@@ -24,7 +26,7 @@ export function playbackUrlsForIngest(streamKey: string, app = INGEST_APP): Play
   return {
     hls: `${base}/${app}/${streamKey}.m3u8`,
     flv: `${base}/${app}/${streamKey}.flv`,
-    rtmp: `rtmp://localhost:1935/${app}/${streamKey}`,
+    rtmp: `${rtmpIngestBase()}/${app}/${streamKey}`,
     whep: `${SRS_API_BASE}/rtc/v1/whep/?app=${encodeURIComponent(app)}&stream=${encodeURIComponent(streamKey)}`,
   };
 }

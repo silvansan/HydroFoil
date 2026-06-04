@@ -563,6 +563,13 @@ export const api = {
 
   getHealth: () => request<{ status: string; database: string }>('/api/health'),
   getSystemTelemetry: () => request<SystemTelemetry>('/api/system/telemetry'),
+  getOperatorPublicUrls: () =>
+    request<{
+      rtmpIngestBase: string;
+      srtIngestHost: string;
+      srtIngestPort: number;
+      publicAppUrl: string;
+    }>('/api/system/public-urls'),
   getGatewayStatus: () =>
     request<{
       engine: string;

@@ -1,8 +1,10 @@
 import type { RtspProtocolConfig, SrtProtocolConfig } from '../api/types';
-
-const RTMP_BASE = import.meta.env.VITE_RTMP_INGEST_URL ?? 'rtmp://localhost:1935';
-const SRT_HOST = import.meta.env.VITE_SRT_INGEST_HOST ?? 'localhost';
-const SRT_PORT = Number(import.meta.env.VITE_SRT_INGEST_PORT ?? 10080);
+import {
+  publicAppOrigin,
+  rtmpIngestBase,
+  srtIngestHost,
+  srtIngestPort,
+} from './operator-urls';
 const RTSP_PORT = 554;
 
 /** SRS SRT publish streamid — maps to RTMP app/stream (restream push). */
@@ -37,8 +39,7 @@ export function generateStreamKey(name?: string): string {
 }
 
 export function rtmpIngestUrl(streamKey: string, app = 'live'): string {
-  const base = RTMP_BASE.replace(/\/$/, '');
-  return `${base}/${app}/${streamKey}`;
+  return `${rtmpIngestBase()}/${app}/${streamKey}`;
 }
 
 export function rtspIngestUrl(config?: RtspProtocolConfig): string {
@@ -68,8 +69,9 @@ export function srtIngestUrl(config?: SrtProtocolConfig | string, app = 'live'):
     const safeApp = app.replace(/^\/+|\/+$/g, '') || 'live';
     const safeStream = streamKey.replace(/^\/+|\/+$/g, '');
     const streamid = `#!::r=${safeApp}/${safeStream},m=publish`;
-    const hostPart = SRT_HOST.includes(':') ? `[${SRT_HOST}]` : SRT_HOST;
-    return `srt://${hostPart}:${SRT_PORT}?streamid=${encodeURIComponent(streamid)}`;
+    const host = srtIngestHost();
+    const hostPart = host.includes(':') ? `[${host}]` : host;
+    return `srt://${hostPart}:${srtIngestPort()}?streamid=${encodeURIComponent(streamid)}`;
   }
 
   // New config object format
@@ -78,7 +80,7 @@ export function srtIngestUrl(config?: SrtProtocolConfig | string, app = 'live'):
   }
 
   const host = config.host.trim();
-  const port = config.port || SRT_PORT;
+  const port = config.port || srtIngestPort();
   const mode = config.mode || 'caller';
   const streamid = config.streamid || 'stream';
 
@@ -125,7 +127,7 @@ export function buildSrtConnectionUrl(
   direction: 'ingest' | 'push' = 'ingest'
 ): string {
   const mode = config.mode || 'caller';
-  const port = config.port || SRT_PORT;
+  const port = config.port || srtIngestPort();
   const params = new URLSearchParams();
   params.set('mode', mode);
   if (config.streamid?.trim()) {
@@ -140,7 +142,7 @@ export function buildSrtConnectionUrl(
       const qs = params.toString();
       return `srt://:${port}${qs ? `?${qs}` : ''}`;
     }
-    const host = SRT_HOST;
+    const host = srtIngestHost();
     const hostPart = host.includes(':') ? `[${host}]` : host;
     let auth = '';
     if (config.username) {
@@ -264,10 +266,16 @@ export function generateIngestUrl(
       }
       return srtIngestUrl(config as SrtProtocolConfig);
     }
-    case 'hls':
-      return `http://localhost:8080/${app}/${streamKey || 'stream'}.m3u8`;
-    case 'http':
-      return `http://localhost:8080/${app}/${streamKey || 'stream'}`;
+    case 'hls': {
+      const origin = publicAppOrigin();
+      const path = `/${app}/${streamKey || 'stream'}.m3u8`;
+      return origin ? `${origin}/live${path}` : `http://localhost:8080${path}`;
+    }
+    case 'http': {
+      const origin = publicAppOrigin();
+      const path = `/${app}/${streamKey || 'stream'}`;
+      return origin ? `${origin}/live${path}` : `http://localhost:8080${path}`;
+    }
     default:
       return '';
   }
@@ -311,12 +319,18 @@ export function suggestPlaybackTarget(
   const safeApp = app || 'live';
   const safeStream = stream || '{stream}';
   switch (protocol) {
-    case 'hls':
-      return `http://localhost:8080/${safeApp}/${safeStream}.m3u8`;
-    case 'http-flv':
-      return `http://localhost:8080/${safeApp}/${safeStream}.flv`;
+    case 'hls': {
+      const origin = publicAppOrigin();
+      const path = `/${safeApp}/${safeStream}.m3u8`;
+      return origin ? `${origin}/live${path}` : `http://localhost:8080${path}`;
+    }
+    case 'http-flv': {
+      const origin = publicAppOrigin();
+      const path = `/${safeApp}/${safeStream}.flv`;
+      return origin ? `${origin}/live${path}` : `http://localhost:8080${path}`;
+    }
     case 'rtmp':
-      return `rtmp://localhost:1935/${safeApp}/${safeStream}`;
+      return `${rtmpIngestBase()}/${safeApp}/${safeStream}`;
     default:
       return `/${safeApp}/${safeStream}`;
   }

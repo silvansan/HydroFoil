@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, AUTH_SESSION_EXPIRED_EVENT } from '../api/client';
 
 import type { User, UserAccess } from '../api/types';
+import { setOperatorPublicUrls } from '../lib/operator-urls';
 
 
 
@@ -164,10 +165,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [loading, setLoading] = React.useState(() => Boolean(localStorage.getItem(TOKEN_KEY)));
-
-
+  const [publicUrlsRevision, setPublicUrlsRevision] = React.useState(0);
 
   const navigate = useNavigate();
+
+  const refreshPublicUrls = React.useCallback(() => {
+    api
+      .getOperatorPublicUrls()
+      .then((urls) => {
+        setOperatorPublicUrls(urls);
+        setPublicUrlsRevision((n) => n + 1);
+      })
+      .catch(() => {
+        // Keep vite/env fallbacks when the API is unreachable.
+      });
+  }, []);
 
 
 
@@ -238,9 +250,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .getCurrentUser()
 
       .then((result) => {
-
         applySession(toAuthUser(result.user), result.access);
-
+        refreshPublicUrls();
       })
 
       .catch(() => {
@@ -251,7 +262,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       .finally(() => setLoading(false));
 
-  }, [applySession, clearSession]);
+  }, [applySession, clearSession, refreshPublicUrls]);
 
 
 
@@ -280,6 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await api.login({ email, password });
 
       applySession(toAuthUser(result.user), result.access);
+      refreshPublicUrls();
 
       try {
 
@@ -295,7 +307,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     },
 
-    [navigate, applySession]
+    [navigate, applySession, refreshPublicUrls]
 
   );
 
@@ -321,7 +333,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      <div key={publicUrlsRevision}>{children}</div>
+    </AuthContext.Provider>
+  );
 
 };
 
