@@ -5,7 +5,7 @@ import { Button, Card } from '@hydrofoil/ui-kit';
 import { api } from '../api/client';
 import { HlsPlayer } from './HlsPlayer';
 import { SessionStatusBadge } from './SessionStatusBadge';
-import { buildLiveIframeEmbedCode, playbackUrlsForIngest } from '../lib/playback';
+import { absoluteHlsUrl, buildLiveIframeEmbedCode, playbackUrlsForIngest } from '../lib/playback';
 import { copyText } from '../lib/clipboard';
 import { rtmpIngestUrl } from '../lib/stream';
 
@@ -104,7 +104,7 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          <HlsPlayer src={protectedPlayback?.hlsUrl ?? urls.hls} />
+          <HlsPlayer src={absoluteHlsUrl(streamKey, gatewayApp)} />
 
           <div className="flex flex-wrap gap-2">
             <Button

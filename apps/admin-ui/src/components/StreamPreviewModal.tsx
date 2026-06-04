@@ -299,7 +299,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
           {urlChoice === 'hls' ? (
             <HydroFoilPlayer
-              src={protectedPlayback?.hlsUrl ?? hlsAbsolute}
+              src={hlsAbsolute}
               title={label ?? `${gatewayApp}/${streamKey}`}
               isLive={isLive}
               playbackMode="live-hls"

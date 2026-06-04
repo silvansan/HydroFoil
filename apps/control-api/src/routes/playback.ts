@@ -209,15 +209,34 @@ async function resolvePlaybackOutput(
 }
 
 async function proxyPlaybackFromSrs(resourcePath: string) {
-  const upstreamUrl = new URL(resourcePath.replace(/^\/+/, ''), `${config.srsPlaybackBaseUrl}/`);
-  const response = await fetch(upstreamUrl);
-  const body = Buffer.from(await response.arrayBuffer());
+  const base = config.srsPlaybackBaseUrl.replace(/\/$/, '');
+  const normalized = resourcePath.startsWith('/') ? resourcePath : `/${resourcePath}`;
+  const candidates = [normalized];
+  // SRS serves default app "live" at /live/{stream}.m3u8; other apps use /{app}/{stream}.m3u8
+  if (/^\/live\/[^/]+\.m3u8$/i.test(normalized)) {
+    const alt = normalized.replace(/^\/live\//, '/');
+    if (!candidates.includes(alt)) candidates.push(alt);
+  } else if (/^\/[^/]+\/[^/]+\.m3u8$/i.test(normalized)) {
+    const alt = `/live${normalized}`;
+    if (!candidates.includes(alt)) candidates.push(alt);
+  }
 
-  return {
-    status: response.status,
-    contentType: response.headers.get('content-type') ?? undefined,
-    body,
-  };
+  let lastStatus = 404;
+  let lastContentType: string | undefined;
+  let lastBody = Buffer.alloc(0);
+
+  for (const path of candidates) {
+    const upstreamUrl = new URL(path.replace(/^\/+/, ''), `${base}/`);
+    const response = await fetch(upstreamUrl);
+    lastStatus = response.status;
+    lastContentType = response.headers.get('content-type') ?? undefined;
+    lastBody = Buffer.from(await response.arrayBuffer());
+    if (lastStatus >= 200 && lastStatus < 300) {
+      return { status: lastStatus, contentType: lastContentType, body: lastBody };
+    }
+  }
+
+  return { status: lastStatus, contentType: lastContentType, body: lastBody };
 }
 
 export function createPlaybackRouter(ctx: AppContext): Router {
