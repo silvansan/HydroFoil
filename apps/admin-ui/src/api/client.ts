@@ -32,7 +32,10 @@ const TOKEN_KEY = 'hf_auth_token';
 
 export const AUTH_SESSION_EXPIRED_EVENT = 'hydrofoil:auth-session-expired';
 
-function isPublicAuthRequest(path: string, method: string | undefined) {
+function isPublicApiRequest(path: string, method: string | undefined) {
+  if (method?.toUpperCase() === 'GET' && path === '/api/system/public-urls') {
+    return true;
+  }
   if (method?.toUpperCase() === 'POST' && path.startsWith('/api/auth/')) {
     return (
       path === '/api/auth/login' ||
@@ -46,17 +49,17 @@ function isPublicAuthRequest(path: string, method: string | undefined) {
 function notifySessionExpired(path: string, init?: RequestInit) {
   if (typeof window === 'undefined') return;
   if (!window.localStorage.getItem(TOKEN_KEY)) return;
-  if (isPublicAuthRequest(path, init?.method)) return;
+  if (isPublicApiRequest(path, init?.method)) return;
   window.localStorage.removeItem(TOKEN_KEY);
   window.dispatchEvent(new CustomEvent(AUTH_SESSION_EXPIRED_EVENT));
 }
 
-function authHeaders(init?: RequestInit): HeadersInit {
+function authHeaders(path: string, init?: RequestInit): HeadersInit {
   const headers = new Headers(init?.headers);
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && !isPublicApiRequest(path, init?.method)) {
     const token = window.localStorage.getItem(TOKEN_KEY);
     if (token && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${token}`);
@@ -67,14 +70,14 @@ function authHeaders(init?: RequestInit): HeadersInit {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: authHeaders(init),
+    headers: authHeaders(path, init),
     ...init,
   });
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const raw = (body as { error?: string }).error ?? `Request failed (${response.status})`;
-    if (response.status === 401) {
+    if (response.status === 401 && !isPublicApiRequest(path, init?.method)) {
       notifySessionExpired(path, init);
     }
     throw new Error(formatApiError(raw));

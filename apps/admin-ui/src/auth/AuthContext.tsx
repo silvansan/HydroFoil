@@ -224,6 +224,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
   React.useEffect(() => {
+    refreshPublicUrls();
+  }, [refreshPublicUrls]);
+
+  React.useEffect(() => {
 
     const token = localStorage.getItem(TOKEN_KEY);
 

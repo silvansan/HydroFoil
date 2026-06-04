@@ -64,12 +64,25 @@ async function bootstrap() {
 async function ensureDefaultAdmin(organizationId: string, repos: ReturnType<typeof createRepositories>) {
   const existing = await repos.users.findByEmailWithPasswordHash(organizationId, config.defaultAdminEmail);
   if (existing) {
-    if (!existing.password_hash || !existing.is_active) {
+    const needsPassword =
+      !existing.password_hash || config.defaultAdminSyncPassword;
+    const needsRepair = !existing.is_active || existing.role !== config.defaultAdminRole;
+
+    if (needsPassword || needsRepair) {
       await repos.users.update(organizationId, existing.id, {
-        passwordHash: existing.password_hash ?? (await hashPassword(config.defaultAdminPassword)),
-        isActive: config.defaultAdminActive,
-        role: config.defaultAdminRole,
+        ...(needsPassword
+          ? { passwordHash: await hashPassword(config.defaultAdminPassword) }
+          : {}),
+        ...(needsRepair
+          ? { isActive: config.defaultAdminActive, role: config.defaultAdminRole }
+          : {}),
       });
+      if (config.defaultAdminSyncPassword) {
+        logger.warn(
+          { email: config.defaultAdminEmail },
+          'DEFAULT_ADMIN_SYNC_PASSWORD applied — bootstrap admin password was reset from env'
+        );
+      }
     }
     return;
   }

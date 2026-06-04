@@ -10,6 +10,8 @@ export const config = {
     (process.env.DEFAULT_ADMIN_ROLE as 'super-admin' | 'admin' | 'manager' | undefined) ??
     'super-admin',
   defaultAdminActive: process.env.DEFAULT_ADMIN_ACTIVE !== 'false',
+  /** When true, reset the bootstrap admin password from DEFAULT_ADMIN_PASSWORD on each start. */
+  defaultAdminSyncPassword: process.env.DEFAULT_ADMIN_SYNC_PASSWORD === 'true',
   runMigrationsOnStart: process.env.RUN_MIGRATIONS_ON_START !== 'false',
   authTokenSecret: process.env.AUTH_TOKEN_SECRET ?? 'hydrofoil-dev-auth-secret',
   playbackTokenSecret: process.env.PLAYBACK_TOKEN_SECRET ?? 'hydrofoil-dev-playback-secret',

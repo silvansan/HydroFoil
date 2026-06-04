@@ -28,6 +28,8 @@ import { createRoutesRouter } from './routes/routes';
 import { createRestreamsRouter } from './routes/restreams';
 import { createStorageLocationsRouter } from './routes/storage-locations';
 import { createSystemRouter } from './routes/system';
+import { getOperatorPublicUrls } from './lib/operator-public-urls';
+import { asyncHandler } from './middleware/async-handler';
 import { createSrsMediaProxyRouter } from './routes/srs-media-proxy';
 import { createVodPublicPlaybackRouter, createVodRoutesRouter } from './routes/vod-routes';
 import { createWebhooksRouter } from './routes/webhooks';
@@ -51,6 +53,12 @@ export function createApp(ctx: AppContext) {
 
   app.use('/api/health', createHealthRouter(ctx));
   app.use('/api/auth', createAuthRouter(ctx));
+  app.get(
+    '/api/system/public-urls',
+    asyncHandler(async (_req, res) => {
+      res.json(getOperatorPublicUrls());
+    })
+  );
   app.use('/srs-media', createSrsMediaProxyRouter());
   app.use('/api', authMiddleware);
   app.use('/api', createAccessScopeMiddleware(ctx));
