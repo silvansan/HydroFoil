@@ -1,22 +1,15 @@
 # =============================================================================
-# HydroFoil — Portainer stack (paste this entire file into the stack Web editor)
+# HydroFoil — Portainer stack (paste into Web editor — no git clone required)
 # =============================================================================
 #
-# Pair with environment variables from: deploy/portainer/.env.example
-# (or upload deploy/portainer/.env.copypaste after editing CHANGE_ME values)
+# Uses pre-built images from GitHub Container Registry (published on push to main).
+# Pair with: deploy/portainer/.env.example (or .env.copypaste)
 #
-# RECOMMENDED (easiest, no SSH on the server):
-#   Portainer → Stacks → Add stack → Git repository
-#   Repository URL:  https://github.com/silvansan/HydroFoil.git
-#   Repository reference: main  (or your release branch)
-#   Compose path:      deploy/portainer/PORTAINER_STACK.yml
-#   Environment:       paste / upload from .env.example (see deploy/portainer/README.md)
+# Before first deploy: GitHub → Actions → "Publish container images" must succeed once.
 #
-# WEB EDITOR (paste this file):
-#   Works when the Portainer agent can build from a git clone — set
-#   HYDROFOIL_BUILD_CONTEXT to the absolute repo path on the host, OR prefer Git repository above.
+# Portainer → Stacks → Add stack → Web editor → paste this file → set env vars → Deploy
 #
-# After deploy: open PUBLIC_APP_URL (or http://host:ADMIN_UI_PORT), sign in, change password.
+# Optional build-from-source stack: deploy/portainer/PORTAINER_STACK.build.yml (Git clone on host)
 # =============================================================================
 
 name: hydrofoil
@@ -154,27 +147,9 @@ services:
       timeout: 5s
       retries: 8
 
-  migrate:
-    build:
-      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
-      dockerfile: docker/Dockerfile.dev
-    restart: 'no'
-    environment:
-      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: >-
-      sh -lc "npm run build -w @hydrofoil/shared-types
-      && npm run build -w @hydrofoil/domain
-      && npm run build -w @hydrofoil/queue
-      && npm run build -w @hydrofoil/db
-      && npm run migrate"
-
   control-api:
-    build:
-      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
-      dockerfile: apps/control-api/Dockerfile
+    image: ${HYDROFOIL_IMAGE_REGISTRY:-ghcr.io/silvansan}/hydrofoil-control-api:${HYDROFOIL_IMAGE_TAG:-latest}
+    pull_policy: always
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -217,13 +192,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
 
   media-worker:
-    build:
-      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
-      dockerfile: apps/media-worker/Dockerfile
+    image: ${HYDROFOIL_IMAGE_REGISTRY:-ghcr.io/silvansan}/hydrofoil-media-worker:${HYDROFOIL_IMAGE_TAG:-latest}
+    pull_policy: always
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -273,11 +245,8 @@ services:
       retries: 6
 
   admin-ui:
-    build:
-      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
-      dockerfile: apps/admin-ui/Dockerfile
-      args:
-        VITE_WEBRTC_ICE_SERVERS: ${VITE_WEBRTC_ICE_SERVERS:-stun:stun.l.google.com:19302}
+    image: ${HYDROFOIL_IMAGE_REGISTRY:-ghcr.io/silvansan}/hydrofoil-admin-ui:${HYDROFOIL_IMAGE_TAG:-latest}
+    pull_policy: always
     restart: unless-stopped
     ports:
       - '${ADMIN_UI_PORT:-3000}:80'

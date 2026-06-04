@@ -1,16 +1,5 @@
-# =============================================================================
-# HydroFoil — Portainer stack (paste into Web editor — no git clone required)
-# =============================================================================
-#
-# Uses pre-built images from GitHub Container Registry (published on push to main).
-# Pair with: deploy/portainer/.env.example (or .env.copypaste)
-#
-# Before first deploy: GitHub → Actions → "Publish container images" must succeed once.
-#
-# Portainer → Stacks → Add stack → Web editor → paste this file → set env vars → Deploy
-#
-# Optional build-from-source stack: deploy/portainer/PORTAINER_STACK.build.yml (Git clone on host)
-# =============================================================================
+﻿# Build-from-source stack — requires full HydroFoil git clone on the Docker host.
+# For paste-and-deploy use PORTAINER_STACK.yml (GHCR images) instead.
 
 name: hydrofoil
 
@@ -147,9 +136,27 @@ services:
       timeout: 5s
       retries: 8
 
+  migrate:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: docker/Dockerfile.dev
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      sh -lc "npm run build -w @hydrofoil/shared-types
+      && npm run build -w @hydrofoil/domain
+      && npm run build -w @hydrofoil/queue
+      && npm run build -w @hydrofoil/db
+      && npm run migrate"
+
   control-api:
-    image: ${HYDROFOIL_IMAGE_REGISTRY:-ghcr.io/silvansan}/hydrofoil-control-api:${HYDROFOIL_IMAGE_TAG:-latest}
-    pull_policy: always
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/control-api/Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -192,10 +199,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   media-worker:
-    image: ${HYDROFOIL_IMAGE_REGISTRY:-ghcr.io/silvansan}/hydrofoil-media-worker:${HYDROFOIL_IMAGE_TAG:-latest}
-    pull_policy: always
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/media-worker/Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -245,8 +255,11 @@ services:
       retries: 6
 
   admin-ui:
-    image: ${HYDROFOIL_IMAGE_REGISTRY:-ghcr.io/silvansan}/hydrofoil-admin-ui:${HYDROFOIL_IMAGE_TAG:-latest}
-    pull_policy: always
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/admin-ui/Dockerfile
+      args:
+        VITE_WEBRTC_ICE_SERVERS: ${VITE_WEBRTC_ICE_SERVERS:-stun:stun.l.google.com:19302}
     restart: unless-stopped
     ports:
       - '${ADMIN_UI_PORT:-3000}:80'

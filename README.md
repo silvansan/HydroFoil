@@ -16,7 +16,7 @@ One stack, one env file — no SSH required if you use **Git repository** in Por
 | 2. Environment variables | Copy from [`deploy/portainer/.env.example`](deploy/portainer/.env.example) — replace every `CHANGE_ME` |
 | 3. Deploy | Portainer → **Stacks** → **Add stack** → see [`deploy/portainer/README.md`](deploy/portainer/README.md) |
 
-**Git repository (recommended):** Repository URL `https://github.com/silvansan/HydroFoil.git`, compose path `deploy/portainer/PORTAINER_STACK.yml`, then paste env vars from `.env.example`.
+**Web editor:** Paste [`deploy/portainer/PORTAINER_STACK.yml`](deploy/portainer/PORTAINER_STACK.yml) (pulls images from GHCR — no build on the server). Run the [Publish container images](https://github.com/silvansan/HydroFoil/actions/workflows/publish-images.yml) workflow once first.
 
 **Bulk env import:** edit [`deploy/portainer/.env.copypaste`](deploy/portainer/.env.copypaste) and upload in Portainer **Advanced mode**.
 
