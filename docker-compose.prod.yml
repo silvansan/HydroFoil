@@ -40,7 +40,7 @@ services:
       PLAYBACK_TOKEN_SECRET: ${PLAYBACK_TOKEN_SECRET:-hydrofoil-dev-playback-secret}
       PLAYBACK_TOKEN_TTL_SECONDS: ${PLAYBACK_TOKEN_TTL_SECONDS:-3600}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3080}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
@@ -111,7 +111,7 @@ services:
     environment: {}
     volumes: !reset []
     ports:
-      - '${ADMIN_UI_PORT:-3000}:80'
+      - '${ADMIN_UI_PORT:-3080}:80'
     depends_on:
       control-api:
         condition: service_started

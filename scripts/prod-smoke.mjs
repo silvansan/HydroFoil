@@ -6,7 +6,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const API_BASE = process.env.SMOKE_API_URL ?? 'http://localhost:3001';
-const UI_BASE = process.env.SMOKE_UI_URL ?? 'http://localhost:3000';
+const UI_BASE = process.env.SMOKE_UI_URL ?? 'http://localhost:3080';
 const TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS ?? 120_000);
 const INTERVAL_MS = 3_000;
 

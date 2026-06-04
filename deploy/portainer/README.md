@@ -34,7 +34,7 @@ HYDROFOIL_IMAGE_TAG=latest
    - Paste each line, or upload your edited `.env.copypaste`
    - `DATABASE_URL` password must match `POSTGRES_PASSWORD`
 4. **Deploy the stack**
-5. Open `PUBLIC_APP_URL` or `http://<server-ip>:3000`
+5. Open `PUBLIC_APP_URL` or `http://<server-ip>:3080` (default `ADMIN_UI_PORT`; change if busy)
 6. Log in with `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` → change password
 
 ---

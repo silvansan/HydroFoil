@@ -249,7 +249,7 @@ services:
     pull_policy: always
     restart: unless-stopped
     ports:
-      - '${ADMIN_UI_PORT:-3000}:80'
+      - '${ADMIN_UI_PORT:-3080}:80'
     depends_on:
       control-api:
         condition: service_started

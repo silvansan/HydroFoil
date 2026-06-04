@@ -69,7 +69,7 @@ docker compose exec admin-ui sh -c "cd /app && npm install"
 
 Or rebuild without the stale `node_modules` volume: `docker compose down -v` then `npm run docker:up`.
 
-Open **http://localhost:3000** — Vite proxies `/api` to control-api inside Compose.
+Open **http://localhost:3080** — Vite proxies `/api` to control-api inside Compose (override `ADMIN_UI_PORT` if needed).
 
 **Host dev (optional):**
 
@@ -91,7 +91,7 @@ npm run docker:prod:smoke
 
 After changing routes, the media worker persists desired gateway config. Point SRS webhooks at `POST http://control-api:3001/api/webhooks/srs` (see `config/srs/srs.conf` comments).
 
-- Admin UI: `http://localhost:3000` (proxies `/api` → control-api)
+- Admin UI: `http://localhost:3080` (proxies `/api` → control-api; default host port, not 3000)
 - Control API: `http://localhost:3001`
 - SRS HTTP API: `http://localhost:1985`
 - RTMP ingest: `rtmp://localhost:1935/live/{streamKey}`

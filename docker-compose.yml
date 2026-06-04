@@ -1,5 +1,5 @@
 # HydroFoil — full stack via: docker compose up --build
-# Admin UI: http://localhost:3000  |  API: http://localhost:3001
+# Admin UI: http://localhost:3080  |  API: http://localhost:3001
 
 services:
   postgres:
@@ -118,7 +118,7 @@ services:
       PLAYBACK_TOKEN_SECRET: ${PLAYBACK_TOKEN_SECRET:-hydrofoil-dev-playback-secret}
       PLAYBACK_TOKEN_TTL_SECONDS: ${PLAYBACK_TOKEN_TTL_SECONDS:-3600}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3080}
     ports:
       - '3001:3001'
     depends_on:
@@ -178,7 +178,7 @@ services:
       VITE_REPOSITORY_URL: https://github.com/silvansan/HydroFoil
       VITE_LICENSE_LABEL: AGPL-3.0
     ports:
-      - '${ADMIN_UI_PORT:-3000}:3000'
+      - '${ADMIN_UI_PORT:-3080}:3000'
     depends_on:
       - control-api
     volumes:
