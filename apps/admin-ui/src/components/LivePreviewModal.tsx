@@ -1,18 +1,14 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { Button, Card } from '@hydrofoil/ui-kit';
 
-import { api } from '../api/client';
-import { HlsPlayer } from './HlsPlayer';
-import { SessionStatusBadge } from './SessionStatusBadge';
-import {
-  absoluteHlsUrl,
-  buildLiveIframeEmbedCode,
-  playbackUrlsForIngest,
-} from '../lib/playback';
 import { useLivePlaybackResolve } from '../hooks/useLivePlaybackResolve';
+import { buildLiveIframeEmbedCode, rtmpMonitorUrl } from '../lib/playback';
 import { copyText } from '../lib/clipboard';
 import { rtmpIngestUrl } from '../lib/stream';
+import { ClickableStreamUrl } from './CopyableUrl';
+import { SessionStatusBadge } from './SessionStatusBadge';
 
 interface LivePreviewModalProps {
   streamKey: string;
@@ -28,36 +24,14 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
   onClose,
 }) => {
   const [toast, setToast] = React.useState<string | null>(null);
-  const [protectedPlayback, setProtectedPlayback] = React.useState<{
-    token: string;
-    hlsUrl: string;
-    embedUrl: string;
-  } | null>(null);
   const isPublishing = status === 'publishing';
   const playback = useLivePlaybackResolve(gatewayApp, streamKey, {
     enabled: true,
     refreshMs: isPublishing ? 10000 : 0,
   });
-  const hlsPlayUrl = playback.playerHlsUrl ?? absoluteHlsUrl(streamKey, gatewayApp);
-  const urls = React.useMemo(
-    () => playbackUrlsForIngest(streamKey, gatewayApp),
-    [streamKey, gatewayApp]
-  );
-  React.useEffect(() => {
-    api
-      .issueLivePlaybackToken({
-        app: gatewayApp,
-        stream: streamKey,
-      })
-      .then((result) =>
-        setProtectedPlayback({
-          token: result.token,
-          hlsUrl: result.hlsUrl,
-          embedUrl: result.embedUrl,
-        })
-      )
-      .catch(() => setProtectedPlayback(null));
-  }, [gatewayApp, streamKey]);
+
+  const rtmpPlay = playback.resolved?.rtmpPlayUrl ?? rtmpMonitorUrl(streamKey, gatewayApp);
+  const rtmpPublish = playback.resolved?.rtmpPublishUrl ?? rtmpIngestUrl(streamKey, gatewayApp);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -98,11 +72,8 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
             {status && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <SessionStatusBadge status={status} />
-                {status !== 'publishing' && (
-                  <span className="text-xs text-slate-500">Preview may be offline</span>
-                )}
-                {isPublishing && !playback.loading && !playback.playable && (
-                  <span className="text-xs text-amber-400">Waiting for playable HLS from SRS</span>
+                {isPublishing && playback.playable && (
+                  <span className="text-xs text-emerald-400">Live — open RTMP play URL in VLC</span>
                 )}
               </div>
             )}
@@ -118,61 +89,46 @@ export const LivePreviewModal: React.FC<LivePreviewModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          <HlsPlayer src={hlsPlayUrl} />
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                copy(
-                  'Embed code',
-                  buildLiveIframeEmbedCode(streamKey, gatewayApp, protectedPlayback?.token)
-                )
-              }
-            >
-              Copy embed code
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => copy('RTMP URL', urls.rtmp)}>
-              Copy RTMP
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => copy('Ingest URL', rtmpIngestUrl(streamKey, gatewayApp))}
-            >
-              Copy publish URL
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                copy(
-                  'Player link',
-                  `${window.location.origin}${
-                    protectedPlayback?.embedUrl ??
-                    `/embed?app=${encodeURIComponent(gatewayApp)}&stream=${encodeURIComponent(
-                      streamKey
-                    )}&live=1`
-                  }`
-                )
-              }
-            >
-              Copy player link
-            </Button>
+          <p className="text-sm text-slate-400">
+            Monitor uses <strong className="text-slate-200">RTMP</strong> (not in-browser HLS). For website
+            embeds, add an HLS output or restream.
+          </p>
+          <div>
+            <label className="text-xs font-medium text-slate-400">Publish</label>
+            <ClickableStreamUrl url={rtmpPublish} className="mt-1 text-xs block" onCopied={notify} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-400">Play (VLC / vMix)</label>
+            <ClickableStreamUrl url={rtmpPlay} className="mt-1 text-xs block" onCopied={notify} />
           </div>
 
-          <p className="text-xs text-slate-500 break-all">
-            {`${window.location.origin}${
-              protectedPlayback?.embedUrl ??
-              `/embed?app=${encodeURIComponent(gatewayApp)}&stream=${encodeURIComponent(
-                streamKey
-              )}&live=1`
-            }`}
-          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={() => copy('Publish URL', rtmpPublish)}>
+              Copy publish URL
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => copy('Play URL', rtmpPlay)}>
+              Copy play URL
+            </Button>
+            {playback.resolved?.webPlaybackAvailable && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => copy('Embed code', buildLiveIframeEmbedCode(streamKey, gatewayApp))}
+              >
+                Copy HLS embed code
+              </Button>
+            )}
+          </div>
+
+          {!playback.resolved?.webPlaybackAvailable && (
+            <p className="text-xs text-slate-500">
+              <Link to="/outputs" className="text-brand-400 hover:underline" onClick={onClose}>
+                Add an HLS output
+              </Link>{' '}
+              for web playback.
+            </p>
+          )}
         </div>
 
         {toast && (

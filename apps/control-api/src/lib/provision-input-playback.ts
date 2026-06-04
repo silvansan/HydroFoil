@@ -1,14 +1,14 @@
 import type { Application, Input } from '@hydrofoil/shared-types';
 
 import type { AppContext } from '../context';
-import { buildHlsRouteTarget, watchOutputName, watchRouteName } from './playback-target';
+import { buildRtmpRouteTarget, watchOutputName, watchRouteName } from './playback-target';
 
 export interface ProvisionedPlayback {
   outputId: string;
   routeId: string;
 }
 
-/** Creates the default HLS watch output + route for a new input (same SRS app/stream as ingest). */
+/** Creates the default RTMP monitor output + route (ingest path; web HLS via restream/transcode outputs). */
 export async function provisionDefaultInputPlayback(
   ctx: Pick<AppContext, 'repos' | 'organizationId'>,
   input: Input,
@@ -17,8 +17,8 @@ export async function provisionDefaultInputPlayback(
   const appName = application.appName;
   const output = await ctx.repos.outputs.create(ctx.organizationId, {
     name: watchOutputName(appName, input.streamKey),
-    routeTarget: buildHlsRouteTarget(appName, input.streamKey),
-    playbackProtocol: 'hls',
+    routeTarget: buildRtmpRouteTarget(appName, input.streamKey),
+    playbackProtocol: 'rtmp',
     gatewayAppName: appName,
     gatewayStreamName: input.streamKey,
     enabled: true,

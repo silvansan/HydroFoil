@@ -34,6 +34,17 @@ describe('playback-resolver', () => {
     ).toBe('__defaultVhost__');
   });
 
+  it('ignores SRS internal stream ids mistaken for vhost', () => {
+    expect(
+      resolveStreamVhost({
+        name: 'fr-gi2uep',
+        app: 'gtch',
+        vhost: 'vid-1n8qrr9',
+        publish: { active: true, vhost: '__defaultVhost__' },
+      })
+    ).toBe('__defaultVhost__');
+  });
+
   it('finds stream by app and name', () => {
     const streams = [
       { name: 'a', app: 'live' },

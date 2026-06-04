@@ -1,4 +1,5 @@
 import { config } from '../config';
+import { buildRtmpPlayUrl } from '../lib/rtmp-playback';
 
 export interface SrsStreamRow {
   name?: string;
@@ -10,10 +11,14 @@ export interface SrsStreamRow {
 
 export interface ResolvedLivePlayback {
   active: boolean;
+  /** True when SRS reports an active publisher (RTMP monitor ready). */
   playable: boolean;
+  monitorMode: 'rtmp' | 'http';
   vhost: string;
   app: string;
   stream: string;
+  rtmpPublishUrl: string;
+  rtmpPlayUrl: string;
   upstreamHls: string;
   upstreamFlv: string;
   srsMediaHls: string;
@@ -26,8 +31,22 @@ function normalizeApp(app: string) {
   return app.replace(/^\/+|\/+$/g, '') || 'live';
 }
 
+const KNOWN_VHOSTS = new Set(['localhost', '__defaultVhost__']);
+
+function isPlausibleSrsVhost(value: string | undefined): value is string {
+  if (!value || value.length > 120) return false;
+  if (value.startsWith('vid-') || value.includes('/')) return false;
+  return true;
+}
+
 export function resolveStreamVhost(row: SrsStreamRow): string {
-  return row.publish?.vhost ?? row.vhost ?? '__defaultVhost__';
+  const candidates = [row.publish?.vhost, row.vhost].filter(isPlausibleSrsVhost);
+  for (const candidate of candidates) {
+    if (KNOWN_VHOSTS.has(candidate) || candidate.includes('.')) {
+      return candidate;
+    }
+  }
+  return candidates[0] ?? '__defaultVhost__';
 }
 
 /** Canonical SRS HTTP paths (aligned with hls m3u8=[app]/[stream].m3u8 and remux [app]/[stream].flv). */
@@ -86,10 +105,11 @@ export async function probeUpstreamPlayable(upstreamPath: string): Promise<boole
 export async function resolveLivePlayback(
   app: string,
   stream: string,
-  options?: { probe?: boolean }
+  options?: { probe?: boolean; monitorMode?: 'rtmp' | 'http' }
 ): Promise<ResolvedLivePlayback> {
   const safeApp = normalizeApp(app);
   const safeStream = stream.replace(/^\/+|\/+$/g, '');
+  const monitorMode = options?.monitorMode ?? 'rtmp';
   const streams = await listSrsStreams();
   const row = findSrsStream(streams, safeApp, safeStream);
 
@@ -98,15 +118,14 @@ export async function resolveLivePlayback(
 
   const upstreamHls = buildUpstreamMediaPath(safeApp, safeStream, vhost, 'm3u8');
   const upstreamFlv = buildUpstreamMediaPath(safeApp, safeStream, vhost, 'flv');
+  const rtmpPlayUrl = buildRtmpPlayUrl(safeApp, safeStream);
 
-  let playable = false;
-  if (active && options?.probe !== false) {
-    playable = await probeUpstreamPlayable(upstreamHls);
+  let playable = active;
+  if (active && monitorMode === 'http' && options?.probe !== false) {
+    playable = await probeUpstreamPlayable(upstreamFlv);
     if (!playable) {
-      playable = await probeUpstreamPlayable(upstreamFlv);
+      playable = await probeUpstreamPlayable(upstreamHls);
     }
-  } else {
-    playable = active;
   }
 
   const srsMediaHls = `/srs-media/${safeApp}/${safeStream}.m3u8`;
@@ -117,9 +136,12 @@ export async function resolveLivePlayback(
   return {
     active,
     playable,
+    monitorMode,
     vhost,
     app: safeApp,
     stream: safeStream,
+    rtmpPublishUrl: rtmpPlayUrl,
+    rtmpPlayUrl,
     upstreamHls,
     upstreamFlv,
     srsMediaHls,

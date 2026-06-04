@@ -236,18 +236,32 @@ export function createPlaybackRouter(ctx: AppContext): Router {
       }
 
       await assertOperatorPlaybackTarget(ctx, app, stream);
-      const resolved = await resolveLivePlayback(app, stream, { probe: true });
+      const resolved = await resolveLivePlayback(app, stream, { monitorMode: 'rtmp' });
+
+      const outputs = (await ctx.repos.outputs.listAll(ctx.organizationId)) as Output[];
+      const webHlsOutput = outputs.find(
+        (item) =>
+          item.enabled &&
+          item.gatewayAppName === app &&
+          item.gatewayStreamName === stream &&
+          item.playbackProtocol === 'hls'
+      );
 
       res.json({
         active: resolved.active,
         playable: resolved.playable,
+        monitorMode: resolved.monitorMode,
         vhost: resolved.vhost,
         app: resolved.app,
         stream: resolved.stream,
+        rtmpPublishUrl: resolved.rtmpPublishUrl,
+        rtmpPlayUrl: resolved.rtmpPlayUrl,
         monitorFlvUrl: resolved.srsMediaFlv,
         playerHlsUrl: resolved.srsMediaHls,
         protectedHlsUrl: resolved.protectedHls,
         protectedFlvUrl: resolved.protectedFlv,
+        webPlaybackAvailable: Boolean(webHlsOutput),
+        webHlsRouteTarget: webHlsOutput?.routeTarget ?? null,
       });
     })
   );

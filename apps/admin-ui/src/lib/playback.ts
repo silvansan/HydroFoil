@@ -20,15 +20,20 @@ export interface PlaybackUrls {
   whep: string;
 }
 
-/** Browser playback URLs (proxied via Vite in dev). */
+/** Ingest + monitor URLs. RTMP is the default operator monitor; HLS is for web outputs/restreams. */
 export function playbackUrlsForIngest(streamKey: string, app = INGEST_APP): PlaybackUrls {
   const base = PLAYBACK_BASE.replace(/\/$/, '');
+  const rtmp = `${rtmpIngestBase()}/${app}/${streamKey}`;
   return {
     hls: `${base}/${app}/${streamKey}.m3u8`,
     flv: `${base}/${app}/${streamKey}.flv`,
-    rtmp: `${rtmpIngestBase()}/${app}/${streamKey}`,
+    rtmp,
     whep: `${SRS_API_BASE}/rtc/v1/whep/?app=${encodeURIComponent(app)}&stream=${encodeURIComponent(streamKey)}`,
   };
+}
+
+export function rtmpMonitorUrl(streamKey: string, app = INGEST_APP): string {
+  return playbackUrlsForIngest(streamKey, app).rtmp;
 }
 
 export function playbackUrlsForOutput(app: string, stream: string): PlaybackUrls {

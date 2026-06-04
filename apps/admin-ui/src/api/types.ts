@@ -259,13 +259,18 @@ export interface LivePlaybackInfo {
 export interface LivePlaybackResolve {
   active: boolean;
   playable: boolean;
+  monitorMode: 'rtmp' | 'http';
   vhost: string;
   app: string;
   stream: string;
+  rtmpPublishUrl: string;
+  rtmpPlayUrl: string;
   monitorFlvUrl: string;
   playerHlsUrl: string;
   protectedHlsUrl: string;
   protectedFlvUrl: string;
+  webPlaybackAvailable: boolean;
+  webHlsRouteTarget: string | null;
 }
 
 export interface VodRoute {
