@@ -1,66 +1,54 @@
-# Portainer — deploy HydroFoil in one session
+# Portainer — deploy HydroFoil
 
-Paste the stack in Portainer’s **Web editor** — no git clone on the server. Images are pulled from GitHub Container Registry.
+## Which file to paste?
 
-## Before you deploy (once)
+| File | Use in Portainer Web editor? |
+|------|------------------------------|
+| **`PORTAINER_STACK.yml`** | **YES — paste this one** |
+| `PORTAINER_STACK.build.yml` | **NO** — causes `lstat .../docker` error |
+| `advanced/build-from-source.compose.yml` | Only with Git clone on the server |
 
-1. Open [GitHub Actions](https://github.com/silvansan/HydroFoil/actions/workflows/publish-images.yml) → run **Publish container images** (or wait until it finishes after a push to `main`).
-2. Open [Packages](https://github.com/silvansan?tab=packages) → for each `hydrofoil-*` package → **Package settings** → set visibility to **Public** (so Portainer can pull without login).
-
-## Your two files
-
-| File | Use |
-|------|-----|
-| **`PORTAINER_STACK.yml`** | Copy entire file → Portainer **Web editor** |
-| **`.env.example`** | Copy variables into **Environment variables** (Advanced mode) |
-
-Optional: **`.env.copypaste`** — no `#` comments, for **Load variables from .env file**.
-
-Add to env (defaults are fine if using `silvansan` images):
-
-```env
-HYDROFOIL_IMAGE_REGISTRY=ghcr.io/silvansan
-HYDROFOIL_IMAGE_TAG=latest
-```
+Direct link (copy all):  
+https://raw.githubusercontent.com/silvansan/HydroFoil/main/deploy/portainer/PORTAINER_STACK.yml
 
 ---
 
-## Steps in Portainer
+## Before first deploy
 
-1. **Stacks** → **+ Add stack** → name: `hydrofoil`
-2. **Web editor** → paste all of **`PORTAINER_STACK.yml`**
-3. **Environment variables** → **Advanced mode**
-   - Edit `.env.example` locally: replace every `CHANGE_ME`
-   - Paste each line, or upload your edited `.env.copypaste`
+1. [Publish container images](https://github.com/silvansan/HydroFoil/actions/workflows/publish-images.yml) — run once, wait for green.
+2. [Packages](https://github.com/silvansan?tab=packages) → each `hydrofoil-*` → **Public** visibility.
+
+---
+
+## Steps
+
+1. **Stacks** → **Add stack** → **Web editor**
+2. Paste **`PORTAINER_STACK.yml`** (from link above — not `.build.yml`)
+3. **Environment variables** → **Advanced mode** → paste from **`.env.example`** (replace every `CHANGE_ME`)
+   - Or upload edited **`.env.copypaste`**
+   - Include:
+     ```env
+     HYDROFOIL_IMAGE_REGISTRY=ghcr.io/silvansan
+     HYDROFOIL_IMAGE_TAG=latest
+     ADMIN_UI_PORT=3080
+     ```
    - `DATABASE_URL` password must match `POSTGRES_PASSWORD`
-4. **Deploy the stack**
-5. Open `PUBLIC_APP_URL` or `http://<server-ip>:3080` (default `ADMIN_UI_PORT`; change if busy)
-6. Log in with `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` → change password
+4. **Deploy**
+5. Open `http://<server-ip>:3080` (or your `PUBLIC_APP_URL`)
+6. Login → change password
 
 ---
 
-## If you see `lstat .../docker: no such file or directory`
+## Error: `lstat .../docker: no such file or directory`
 
-You are on an **old stack file** that tried to **build** from source. Update `PORTAINER_STACK.yml` from the latest `main` (image-based, no `build:` or `migrate` service).
+You pasted **`PORTAINER_STACK.build.yml`** or an old stack with `build:` / `migrate:` services.
 
----
-
-## Build from source (advanced)
-
-Only if the full repo exists on the Docker host:
-
-- Use **`PORTAINER_STACK.build.yml`**
-- Portainer **Git repository**: `https://github.com/silvansan/HydroFoil.git`, compose path `deploy/portainer/PORTAINER_STACK.build.yml`, `HYDROFOIL_BUILD_CONTEXT=.`
+Fix: delete stack content, paste fresh **`PORTAINER_STACK.yml`** from GitHub.
 
 ---
 
-## After deploy
+## Custom admin UI port
 
-| Check | URL |
-|-------|-----|
-| Admin UI | `PUBLIC_APP_URL` or `http://<host>:<ADMIN_UI_PORT>` |
-| API | `http://<host>:<CONTROL_API_PORT>/health` |
-
-HTTPS: put a reverse proxy in front of `admin-ui` (port 80 inside the stack).
+Default host port is **3080** (not 3000). Set `ADMIN_UI_PORT` and match `PUBLIC_APP_URL`.
 
 More: [docs/PRODUCTION_DEPLOY.md](../../docs/PRODUCTION_DEPLOY.md)

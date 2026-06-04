@@ -1,15 +1,16 @@
 # =============================================================================
-# HydroFoil — Portainer stack (paste into Web editor — no git clone required)
+# HydroFoil — PASTE THIS FILE IN PORTAINER (not PORTAINER_STACK.build.yml)
 # =============================================================================
 #
-# Uses pre-built images from GitHub Container Registry (published on push to main).
-# Pair with: deploy/portainer/.env.example (or .env.copypaste)
+# File name must be:  PORTAINER_STACK.yml   (no ".build" in the name)
 #
-# Before first deploy: GitHub → Actions → "Publish container images" must succeed once.
+# Uses pre-built images from ghcr.io — no git clone, no build: on the server.
+# Env vars: deploy/portainer/.env.example (or .env.copypaste)
 #
-# Portainer → Stacks → Add stack → Web editor → paste this file → set env vars → Deploy
+# Before deploy: GitHub Actions → "Publish container images" → success (once).
+# GHCR packages must be public (github.com/silvansan → Packages).
 #
-# Optional build-from-source stack: deploy/portainer/PORTAINER_STACK.build.yml (Git clone on host)
+# Portainer → Stacks → Add stack → Web editor → paste THIS file → env → Deploy
 # =============================================================================
 
 name: hydrofoil

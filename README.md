@@ -12,11 +12,11 @@ One stack, one env file — no SSH required if you use **Git repository** in Por
 
 | Step | File / action |
 |------|----------------|
-| 1. Stack compose | Paste or set compose path to [`deploy/portainer/PORTAINER_STACK.yml`](deploy/portainer/PORTAINER_STACK.yml) |
-| 2. Environment variables | Copy from [`deploy/portainer/.env.example`](deploy/portainer/.env.example) — replace every `CHANGE_ME` |
-| 3. Deploy | Portainer → **Stacks** → **Add stack** → see [`deploy/portainer/README.md`](deploy/portainer/README.md) |
+| 1. Stack compose | Paste **`deploy/portainer/PORTAINER_STACK.yml`** only — **not** `PORTAINER_STACK.build.yml` |
+| 2. Environment variables | [`deploy/portainer/.env.example`](deploy/portainer/.env.example) — replace every `CHANGE_ME` |
+| 3. Deploy | See [`deploy/portainer/README.md`](deploy/portainer/README.md) |
 
-**Web editor:** Paste [`deploy/portainer/PORTAINER_STACK.yml`](deploy/portainer/PORTAINER_STACK.yml) (pulls images from GHCR — no build on the server). Run the [Publish container images](https://github.com/silvansan/HydroFoil/actions/workflows/publish-images.yml) workflow once first.
+**Web editor:** [Raw stack file](https://raw.githubusercontent.com/silvansan/HydroFoil/main/deploy/portainer/PORTAINER_STACK.yml) · Admin UI on host port **3080** by default · [Publish images](https://github.com/silvansan/HydroFoil/actions/workflows/publish-images.yml) workflow first.
 
 **Bulk env import:** edit [`deploy/portainer/.env.copypaste`](deploy/portainer/.env.copypaste) and upload in Portainer **Advanced mode**.
 

@@ -1,0 +1,185 @@
+# Advanced only: full git clone on the Docker host required.
+# Portainer Git repository → compose path: deploy/portainer/advanced/build-from-source.compose.yml
+# Do NOT use in Web editor paste — use ../PORTAINER_STACK.yml instead.
+
+name: hydrofoil
+
+configs:
+  hydrofoil_srs_conf:
+    content: |
+      max_connections     1000;
+      srs_log_tank        console;
+      rtmp { listen 1935; }
+      http_api { enabled on; listen 1985; }
+      http_server { enabled on; listen 8080; dir ./objs/nginx/html; }
+      srt_server { enabled on; listen 10080; default_app live; }
+      rtc_server { enabled on; listen 8000; candidate 127.0.0.1; }
+      vhost localhost {
+          http_hooks {
+              enabled on;
+              on_publish http://control-api:3001/api/webhooks/srs;
+              on_unpublish http://control-api:3001/api/webhooks/srs;
+          }
+          forward { enabled on; backend http://control-api:3001/api/webhooks/srs/forward; }
+          hls { enabled on; }
+          http_remux { enabled on; mount [vhost]/[app]/[stream].flv; }
+          dvr {
+              enabled on;
+              dvr_path ./objs/nginx/html/dvr/[app]/[stream].[timestamp].flv;
+              dvr_plan session;
+              dvr_wait_keyframe on;
+          }
+          rtc { enabled on; rtmp_to_rtc on; rtc_to_rtmp on; }
+          srt { enabled on; srt_to_rtmp on; }
+      }
+      vhost __defaultVhost__ {
+          http_hooks {
+              enabled on;
+              on_publish http://control-api:3001/api/webhooks/srs;
+              on_unpublish http://control-api:3001/api/webhooks/srs;
+          }
+          forward { enabled on; backend http://control-api:3001/api/webhooks/srs/forward; }
+          hls { enabled on; }
+          http_remux { enabled on; mount [vhost]/[app]/[stream].flv; }
+          dvr {
+              enabled on;
+              dvr_path ./objs/nginx/html/dvr/[app]/[stream].[timestamp].flv;
+              dvr_plan session;
+              dvr_wait_keyframe on;
+          }
+          rtc { enabled on; rtmp_to_rtc on; rtc_to_rtmp on; }
+          srt { enabled on; srt_to_rtmp on; }
+      }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hydrofoil}
+      POSTGRES_USER: ${POSTGRES_USER:-hydrofoil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-hydrofoil}']
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ':9001'
+    volumes:
+      - minio_data:/data
+
+  migrate:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: docker/Dockerfile.dev
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      sh -lc "npm run build -w @hydrofoil/shared-types
+      && npm run build -w @hydrofoil/domain
+      && npm run build -w @hydrofoil/queue
+      && npm run build -w @hydrofoil/db
+      && npm run migrate"
+
+  control-api:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/control-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      RUN_MIGRATIONS_ON_START: ${RUN_MIGRATIONS_ON_START:-true}
+      DEFAULT_ORGANIZATION_SLUG: ${DEFAULT_ORGANIZATION_SLUG:-default}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:?set DEFAULT_ADMIN_EMAIL}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?set DEFAULT_ADMIN_PASSWORD}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?set AUTH_TOKEN_SECRET}
+      PLAYBACK_TOKEN_SECRET: ${PLAYBACK_TOKEN_SECRET:?set PLAYBACK_TOKEN_SECRET}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?set STORAGE_SECRET_KEY}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?set MINIO_PUBLIC_ENDPOINT}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL}
+    ports:
+      - '${CONTROL_API_PORT:-3001}:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  media-worker:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/media-worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      SRS_DVR_ROOT: /srs-dvr
+    volumes:
+      - srs_data:/srs-dvr:ro
+    depends_on:
+      control-api:
+        condition: service_started
+
+  srs:
+    image: ossrs/srs:5
+    restart: unless-stopped
+    configs:
+      - source: hydrofoil_srs_conf
+        target: /usr/local/srs/conf/srs.conf
+    volumes:
+      - srs_data:/usr/local/srs/objs/nginx/html
+    depends_on:
+      control-api:
+        condition: service_started
+
+  admin-ui:
+    build:
+      context: ${HYDROFOIL_BUILD_CONTEXT:-.}
+      dockerfile: apps/admin-ui/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '${ADMIN_UI_PORT:-3080}:80'
+    depends_on:
+      - control-api
+      - srs
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  srs_data:
