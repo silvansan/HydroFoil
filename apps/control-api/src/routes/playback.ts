@@ -10,6 +10,7 @@ import { asyncHandler } from '../middleware/async-handler';
 import { proxySrsMediaToResponse } from '../lib/proxy-srs-media';
 import { PlaybackTokenService } from '../services/playback-token';
 import { resolveLivePlayback } from '../services/playback-resolver';
+import { buildPlaybackShareByIngest } from '../services/input-playback-share';
 
 const issuePlaybackTokenSchema = z.object({
   app: z.string().min(1),
@@ -221,6 +222,40 @@ async function assertOperatorPlaybackTarget(ctx: AppContext, app: string, stream
     return;
   }
   await resolvePlaybackOutput(ctx, app, stream);
+}
+
+/** Public routes for /embed (no operator JWT). Playback tokens may still be issued. */
+export function createPublicPlaybackRouter(ctx: AppContext): Router {
+  const router = Router();
+
+  router.get(
+    '/embed-manifest',
+    asyncHandler(async (req, res) => {
+      const app = String(req.query.app ?? '').replace(/^\/+|\/+$/g, '');
+      const stream = String(req.query.stream ?? '').replace(/^\/+|\/+$/g, '');
+      if (!app || !stream) {
+        throw new BadRequestError('Query params app and stream are required');
+      }
+
+      const share = await buildPlaybackShareByIngest(ctx, app, stream, req);
+      const resolved = await resolveLivePlayback(share.app, share.stream, { probe: false });
+
+      res.json({
+        active: resolved.active,
+        playable: resolved.active,
+        app: share.app,
+        stream: share.stream,
+        playerHlsUrl: share.hlsUrl,
+        embedUrl: share.embedUrl,
+        playbackAccessPolicy: share.playbackAccessPolicy,
+        requiresToken: Boolean(share.token),
+        token: share.token,
+        expiresAt: share.expiresAt,
+      });
+    })
+  );
+
+  return router;
 }
 
 export function createPlaybackRouter(ctx: AppContext): Router {

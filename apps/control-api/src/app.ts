@@ -21,7 +21,7 @@ import { createRecordingPlaybackRouter } from './routes/recording-playback';
 import { createRecordingPoliciesRouter } from './routes/recording-policies';
 import { createStreamProfilesRouter } from './routes/stream-profiles';
 import { createAudioFeedProfilesRouter } from './routes/audio-feed-profiles';
-import { createPlaybackRouter } from './routes/playback';
+import { createPlaybackRouter, createPublicPlaybackRouter } from './routes/playback';
 import { createLiveSessionsRouter, createRecordingsRouter } from './routes/sessions';
 import { createOutputsRouter } from './routes/outputs';
 import { createRoutesRouter } from './routes/routes';
@@ -60,6 +60,7 @@ export function createApp(ctx: AppContext) {
     })
   );
   app.use('/srs-media', createSrsMediaProxyRouter());
+  app.use('/api/playback', createPublicPlaybackRouter(ctx));
   app.use('/api', authMiddleware);
   app.use('/api', createAccessScopeMiddleware(ctx));
   app.use('/api/system', createSystemRouter(ctx));

@@ -9,6 +9,7 @@ import {
   hlsUrlForTarget,
   type StreamMediaTarget,
 } from '../lib/stream-media';
+import { api } from '../api/client';
 import { copyText } from '../lib/clipboard';
 import { rtmpMonitorUrl } from '../lib/playback';
 import { useInputPlaybackShare } from '../hooks/useInputPlaybackShare';
@@ -70,11 +71,39 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
 
   const notify = (message: string) => onNotify?.(message);
 
+  const resolveShareForCopy = React.useCallback(async (): Promise<StreamMediaTarget> => {
+    if (mediaTarget.playbackShare || !inputId) {
+      return mediaTarget;
+    }
+    try {
+      const share = await api.getInputPlaybackUrl(inputId);
+      return { ...mediaTarget, playbackShare: share };
+    } catch {
+      return mediaTarget;
+    }
+  }, [mediaTarget, inputId]);
+
   const copy = async (e: React.MouseEvent, text: string, success: string) => {
     e.stopPropagation();
     e.preventDefault();
     const ok = await copyText(text);
     notify(ok ? success : 'Copy failed');
+  };
+
+  const copyEmbed = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const resolved = await resolveShareForCopy();
+    const ok = await copyText(embedCodeForTarget(resolved));
+    notify(ok ? 'Embed code copied' : 'Copy failed');
+  };
+
+  const copyHls = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const resolved = await resolveShareForCopy();
+    const ok = await copyText(hlsUrlForTarget(resolved));
+    notify(ok ? 'HLS link copied' : 'Copy failed');
   };
 
   const openPlayback = () => {
@@ -106,12 +135,12 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
           <IconActionButton
             label="Copy embed code"
             icon={Code2}
-            onClick={(e) => copy(e, embedCodeForTarget(mediaTarget), 'Embed code copied')}
+            onClick={copyEmbed}
           />
           <IconActionButton
             label="Copy HLS link"
             icon={Link2}
-            onClick={(e) => copy(e, hlsUrlForTarget(mediaTarget), 'HLS link copied')}
+            onClick={copyHls}
           />
         </>
       )}

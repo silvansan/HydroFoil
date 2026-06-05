@@ -45,7 +45,6 @@ export function buildHydroFoilIframeEmbed(options: HydroFoilIframeEmbedOptions):
   height="${height}"
   style="border:0;border-radius:8px;background:#000;max-width:100%"
   allow="autoplay; fullscreen; picture-in-picture"
-  allowfullscreen
 ></iframe>`;
 }
 

@@ -59,6 +59,25 @@ function usesProtectedPlayback(block: DomainBlock | undefined): boolean {
   return block.playbackAccessPolicy !== 'public';
 }
 
+export async function buildPlaybackShareByIngest(
+  ctx: AppContext,
+  app: string,
+  stream: string,
+  req: Request
+): Promise<InputPlaybackShareDto> {
+  const safeApp = app.replace(/^\/+|\/+$/g, '');
+  const safeStream = stream.replace(/^\/+|\/+$/g, '');
+  const input = await ctx.repos.inputs.findByAppAndStreamKey(
+    ctx.organizationId,
+    safeApp,
+    safeStream
+  );
+  if (!input?.enabled) {
+    throw new NotFoundError('Stream not found');
+  }
+  return buildInputPlaybackShare(ctx, String(input.id), req);
+}
+
 export async function buildInputPlaybackShare(
   ctx: AppContext,
   inputId: string,

@@ -1,7 +1,9 @@
 import React from 'react';
+import { Circle, Pencil } from 'lucide-react';
 
 import type { Input } from '../api/types';
 import { DeleteInputButton } from './DeleteInputButton';
+import { IconActionButton } from './IconActionButton';
 import { StreamMediaActions } from './StreamMediaActions';
 
 export interface StreamKeyActionsProps {
@@ -28,7 +30,7 @@ export const StreamKeyActions: React.FC<StreamKeyActionsProps> = ({
   onRecord,
   onDeleted,
 }) => (
-  <>
+  <div className="flex items-center gap-0.5 shrink-0 flex-wrap justify-end">
     <StreamMediaActions
       inputId={input.id}
       target={{
@@ -40,10 +42,15 @@ export const StreamKeyActions: React.FC<StreamKeyActionsProps> = ({
       onPreview={onPreview}
       onMonitor={onMonitor}
       onNotify={onNotify}
-      onRecord={onRecord}
-      recordEnabled={input.enabled}
-      onEdit={onEdit}
     />
+    <IconActionButton
+      label="Record"
+      icon={Circle}
+      onClick={onRecord}
+      variant="record"
+      iconFill={input.enabled ? 'currentColor' : 'none'}
+    />
+    <IconActionButton label="Edit" icon={Pencil} onClick={onEdit} />
     <DeleteInputButton input={input} onDeleted={onDeleted} />
-  </>
+  </div>
 );
