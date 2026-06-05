@@ -7,10 +7,18 @@ import { api } from '../api/client';
 import type { DomainBlock, Input, LiveSession, StreamProfile } from '../api/types';
 import { InputPlaybackShareCard } from '../components/InputPlaybackShareCard';
 import { useInputPlaybackShare } from '../hooks/useInputPlaybackShare';
-import { PLAYBACK_ACCESS_OPTIONS } from '../lib/privacy-policy';
+import {
+  STREAM_KEY_PRIVACY_PRESETS,
+  parseAllowedDomains,
+  presetFromDomainBlock,
+  streamKeyPrivacyFormErrors,
+  type StreamKeyPrivacyPreset,
+} from '../lib/privacy-policy';
 import { formatStreamProfileOption } from '../lib/stream-profile';
 import { Alert } from '../components/Alert';
 import { CopyableUrl } from '../components/CopyableUrl';
+import { PolicySection } from '../components/PolicySection';
+import { SelectablePolicyCard } from '../components/SelectablePolicyCard';
 import { DeleteButton } from '../components/DeleteButton';
 import { SessionStatusBadge } from '../components/SessionStatusBadge';
 import { StreamMediaActions } from '../components/StreamMediaActions';
@@ -36,7 +44,11 @@ const StreamKeySettingsPage: React.FC = () => {
     streamProfileIds: [] as string[],
     audioFeedProfileIds: [] as string[],
     domainBlockId: '' as string,
+    privacyPreset: 'public' as StreamKeyPrivacyPreset,
+    allowedDomains: '',
+    limitDomains: false,
   });
+  const [privacyValidation, setPrivacyValidation] = React.useState(false);
   const [policies, setPolicies] = React.useState<Array<{ id: string; name: string }>>([]);
   const [domainBlocks, setDomainBlocks] = React.useState<DomainBlock[]>([]);
   const [streamProfiles, setStreamProfiles] = React.useState<StreamProfile[]>([]);
@@ -59,19 +71,34 @@ const StreamKeySettingsPage: React.FC = () => {
       api.listInputSessions(inputId),
     ]);
     setInput(inputRes);
-    setForm({
+    setForm((current) => ({
+      ...current,
       name: inputRes.name,
       enabled: inputRes.enabled,
-      recordingPolicyIds: inputRes.recordingPolicyIds ?? (inputRes.recordingPolicyId ? [inputRes.recordingPolicyId] : []),
-      streamProfileIds: inputRes.streamProfileIds ?? (inputRes.streamProfileId ? [inputRes.streamProfileId] : []),
-      audioFeedProfileIds: inputRes.audioFeedProfileIds ?? (inputRes.audioFeedProfileId ? [inputRes.audioFeedProfileId] : []),
-    });
+      recordingPolicyIds:
+        inputRes.recordingPolicyIds ??
+        (inputRes.recordingPolicyId ? [inputRes.recordingPolicyId] : []),
+      streamProfileIds:
+        inputRes.streamProfileIds ??
+        (inputRes.streamProfileId ? [inputRes.streamProfileId] : []),
+      audioFeedProfileIds:
+        inputRes.audioFeedProfileIds ??
+        (inputRes.audioFeedProfileId ? [inputRes.audioFeedProfileId] : []),
+    }));
     setSessions(sessionsRes.items);
     try {
       const share = await api.getInputPlaybackUrl(inputId);
+      const block = share.domainBlockId
+        ? (await api.getDomainBlock(share.domainBlockId).catch(() => null))
+        : null;
       setForm((current) => ({
         ...current,
         domainBlockId: share.domainBlockId ?? '',
+        privacyPreset: presetFromDomainBlock(block ?? undefined),
+        allowedDomains: (block?.allowedDomains ?? []).join('\n'),
+        limitDomains: Boolean(
+          block?.playbackAccessPolicy === 'token-required' && (block.allowedDomains?.length ?? 0) > 0
+        ),
       }));
     } catch {
       /* playback-url optional during load */
@@ -113,16 +140,55 @@ const StreamKeySettingsPage: React.FC = () => {
 
   const handleSave = async () => {
     if (!input) return;
+    setPrivacyValidation(true);
+    const privacyErrors = streamKeyPrivacyFormErrors({
+      privacyPreset: form.privacyPreset,
+      allowedDomains: form.allowedDomains,
+      limitDomains: form.limitDomains,
+    });
+    if (Object.keys(privacyErrors).length > 0) {
+      setSaveError('Fix privacy settings before saving.');
+      return;
+    }
+
     setIsSaving(true);
     setSaveError(null);
     try {
+      let domainBlockId: string | null = null;
+      if (form.privacyPreset !== 'public') {
+        const domains =
+          form.privacyPreset === 'restricted' || form.limitDomains
+            ? parseAllowedDomains(form.allowedDomains)
+            : [];
+        const existing = form.domainBlockId
+          ? domainBlocks.find((block) => block.id === form.domainBlockId)
+          : undefined;
+        if (existing && existing.playbackAccessPolicy === form.privacyPreset) {
+          await api.updateDomainBlock(existing.id, {
+            allowedDomains: domains,
+            playbackAccessPolicy: form.privacyPreset,
+            tokenRequired: form.privacyPreset === 'token-required',
+          });
+          domainBlockId = existing.id;
+        } else {
+          const block = await api.createDomainBlock({
+            name: `${form.name.trim() || input.name} playback`,
+            allowedDomains: domains,
+            playbackAccessPolicy: form.privacyPreset,
+            tokenRequired: form.privacyPreset === 'token-required',
+          });
+          domainBlockId = block.id;
+          setDomainBlocks((items) => [...items, block]);
+        }
+      }
+
       await api.updateInput(input.id, {
         name: form.name.trim(),
         enabled: form.enabled,
         recordingPolicyIds: form.recordingPolicyIds,
         streamProfileIds: form.streamProfileIds,
         audioFeedProfileIds: form.audioFeedProfileIds,
-        domainBlockId: form.domainBlockId || null,
+        domainBlockId,
       });
       await load();
       reloadPlaybackShare();
@@ -159,31 +225,21 @@ const StreamKeySettingsPage: React.FC = () => {
     title: string,
     note: string,
     items: Array<{ id: string; name: string }>,
-    field: 'recordingPolicyIds' | 'streamProfileIds' | 'audioFeedProfileIds'
+    field: 'recordingPolicyIds' | 'streamProfileIds' | 'audioFeedProfileIds',
+    emptyMessage = 'No templates configured.'
   ) => (
-    <div className="rounded-lg border border-slate-700/70 bg-slate-950/30 p-3">
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
-        <p className="text-xs hf-muted">{note}</p>
+    <PolicySection title={title} description={note} isEmpty={items.length === 0} emptyMessage={emptyMessage}>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <SelectablePolicyCard
+            key={item.id}
+            selected={form[field].includes(item.id)}
+            onToggle={() => toggleId(field, item.id)}
+            title={item.name}
+          />
+        ))}
       </div>
-      {items.length === 0 ? (
-        <p className="text-sm hf-muted">No templates configured.</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((item) => (
-            <label key={item.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-white/5">
-              <input
-                type="checkbox"
-                checked={form[field].includes(item.id)}
-                onChange={() => toggleId(field, item.id)}
-                className="rounded border-slate-600 text-brand-500"
-              />
-              <span>{item.name}</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
+    </PolicySection>
   );
 
   if (!input && !error) {
@@ -296,7 +352,7 @@ const StreamKeySettingsPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-slate-300">
-                    {ingestProtocolDisplayLabel(input.ingestProtocol)}
+                    {ingestProtocolDisplayLabel(input.ingestProtocol, ingestUrlForInput(input, appName))}
                   </label>
                   <CopyableUrl
                     url={ingestUrlForInput(input, appName)}
@@ -367,93 +423,127 @@ const StreamKeySettingsPage: React.FC = () => {
                   policies,
                   'recordingPolicyIds'
                 )}
-                <div className="rounded-lg border border-slate-700/70 bg-slate-950/30 p-3">
-                  <div className="mb-3">
-                    <h3 className="text-sm font-semibold text-slate-200">Stream profiles / transcodes</h3>
-                    <p className="text-xs hf-muted">
+                <PolicySection
+                  title="Stream profiles / transcodes"
+                  description={
+                    <>
                       Select one or more profiles. Renditions merge into gateway desired config.{' '}
                       <Link to="/stream-profiles" className="hf-link hover:underline">
                         Manage profiles
                       </Link>
-                    </p>
+                    </>
+                  }
+                  isEmpty={streamProfiles.length === 0}
+                  emptyMessage="No stream profiles yet."
+                >
+                  <div className="space-y-2">
+                    {streamProfiles.map((profile) => (
+                      <SelectablePolicyCard
+                        key={profile.id}
+                        selected={form.streamProfileIds.includes(profile.id)}
+                        onToggle={() => toggleId('streamProfileIds', profile.id)}
+                        title={
+                          <Link
+                            to={`/stream-profiles/${profile.id}`}
+                            className="hf-link hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {profile.name}
+                          </Link>
+                        }
+                        description={formatStreamProfileOption(profile)}
+                      />
+                    ))}
                   </div>
-                  {streamProfiles.length === 0 ? (
-                    <p className="text-sm hf-muted">No stream profiles yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {streamProfiles.map((profile) => (
-                        <label
-                          key={profile.id}
-                          className="flex items-start gap-3 rounded-lg px-2 py-2 text-sm text-slate-200 hover:bg-white/5"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={form.streamProfileIds.includes(profile.id)}
-                            onChange={() => toggleId('streamProfileIds', profile.id)}
-                            className="mt-1 rounded border-slate-600 text-brand-500"
-                          />
-                          <span className="min-w-0 flex-1">
-                            <Link
-                              to={`/stream-profiles/${profile.id}`}
-                              className="font-medium text-slate-100 hf-link hover:underline"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {profile.name}
-                            </Link>
-                            <span className="block text-xs hf-muted mt-0.5">
-                              {formatStreamProfileOption(profile)}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                </PolicySection>
                 {renderPolicyList(
                   'Audio feed profiles',
                   'MP3/AAC/Opus derivatives. With recording enabled, audio is extracted after finalize; otherwise from DVR when the stream ends.',
                   audioFeeds,
                   'audioFeedProfileIds'
                 )}
-                <div className="rounded-lg border border-slate-700/70 bg-slate-950/30 p-3">
-                  <div className="mb-3">
-                    <h3 className="text-sm font-semibold text-slate-200">Privacy / playback access</h3>
-                    <p className="text-xs hf-muted">
-                      Applies to all playback outputs on this stream key. Signed and domain-restricted
-                      links appear under Web playback after you save.
-                    </p>
-                  </div>
-                  <select
-                    className="hf-select w-full"
-                    value={form.domainBlockId}
-                    onChange={(e) =>
-                      setForm((current) => ({ ...current, domainBlockId: e.target.value }))
-                    }
-                  >
-                    <option value="">Public — no restrictions</option>
-                    {domainBlocks.map((block) => (
-                      <option key={block.id} value={block.id}>
-                        {block.name} (
-                        {PLAYBACK_ACCESS_OPTIONS.find((o) => o.value === block.playbackAccessPolicy)
-                          ?.shortLabel ?? block.playbackAccessPolicy}
-                        )
-                      </option>
+                <PolicySection
+                  title="Privacy / playback access"
+                  description="Choose how partners embed this stream. Signed links appear under Web playback after you save."
+                  isEmpty={false}
+                >
+                  <div className="space-y-2">
+                    {STREAM_KEY_PRIVACY_PRESETS.map((preset) => (
+                      <SelectablePolicyCard
+                        key={preset.value}
+                        selected={form.privacyPreset === preset.value}
+                        onToggle={() =>
+                          setForm((current) => ({
+                            ...current,
+                            privacyPreset: preset.value,
+                            limitDomains:
+                              preset.value === 'token-required' ? current.limitDomains : false,
+                          }))
+                        }
+                        title={preset.title}
+                        description={preset.description}
+                      />
                     ))}
-                  </select>
-                  <p className="mt-2 text-xs hf-muted">
+                  </div>
+                  {form.privacyPreset === 'token-required' && (
+                    <label className="flex items-center gap-2 text-sm text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={form.limitDomains}
+                        onChange={(e) =>
+                          setForm((current) => ({ ...current, limitDomains: e.target.checked }))
+                        }
+                        className="rounded border-slate-600 text-brand-500"
+                      />
+                      Also limit to these domains
+                    </label>
+                  )}
+                  {(form.privacyPreset === 'restricted' ||
+                    (form.privacyPreset === 'token-required' && form.limitDomains)) && (
+                    <div>
+                      <label className="text-xs font-medium text-slate-400">Allowed domains</label>
+                      <textarea
+                        className="hf-input mt-1 min-h-[5rem] font-mono text-xs"
+                        placeholder="yoursite.com&#10;*.partner.org"
+                        value={form.allowedDomains}
+                        onChange={(e) =>
+                          setForm((current) => ({ ...current, allowedDomains: e.target.value }))
+                        }
+                      />
+                      {privacyValidation &&
+                        streamKeyPrivacyFormErrors({
+                          privacyPreset: form.privacyPreset,
+                          allowedDomains: form.allowedDomains,
+                          limitDomains: form.limitDomains,
+                        }).allowedDomains && (
+                          <p className="mt-1 text-xs text-red-400">
+                            {
+                              streamKeyPrivacyFormErrors({
+                                privacyPreset: form.privacyPreset,
+                                allowedDomains: form.allowedDomains,
+                                limitDomains: form.limitDomains,
+                              }).allowedDomains
+                            }
+                          </p>
+                        )}
+                    </div>
+                  )}
+                  <p className="text-xs hf-muted">
                     <Link to="/domain-blocks" className="text-brand-400 hover:underline">
-                      Manage privacy policies
+                      Manage reusable privacy policies
                     </Link>
                   </p>
-                </div>
+                </PolicySection>
                 <p className="text-xs hf-muted">
                   Manage templates under{' '}
                   <Link to="/recording-policies" className="text-brand-400 hover:underline">
                     Recording Policies
                   </Link>
                   ,{' '}
-
-                  ,{' '}
+                  <Link to="/stream-profiles" className="text-brand-400 hover:underline">
+                    Stream Profiles
+                  </Link>
+                  , and{' '}
                   <Link to="/audio-feed-profiles" className="text-brand-400 hover:underline">
                     Audio Feeds
                   </Link>

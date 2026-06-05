@@ -88,18 +88,13 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({ target, 
 
         <div className="p-5 space-y-4 overflow-y-auto">
           {showLivePlayer ? (
-            <LiveStreamPlayPanel
-              streamKey={streamKey}
-              gatewayApp={gatewayApp}
-              status={status}
-              showRtmpUrl={false}
-            />
+            <LiveStreamPlayPanel streamKey={streamKey} gatewayApp={gatewayApp} status={status} />
           ) : (
             <p className="text-sm text-slate-400">Publish to this ingest URL to preview here.</p>
           )}
 
           <div>
-            <label className="text-xs font-medium text-slate-400">Publish (ingest)</label>
+            <label className="text-xs font-medium text-slate-400">RTMPS ingest</label>
             <CopyableUrl url={rtmpPublish} className="mt-1 text-xs break-all" />
           </div>
 

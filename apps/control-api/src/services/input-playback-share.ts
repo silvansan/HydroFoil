@@ -6,6 +6,7 @@ import type { AppContext } from '../context';
 import { config } from '../config';
 import { NotFoundError } from '../errors';
 import { absoluteUrl, appendTokenToPath } from '../lib/absolute-url';
+import { buildScriptEmbedCode } from '../lib/script-embed';
 import { PlaybackTokenService } from './playback-token';
 import { resolveLivePlayback } from './playback-resolver';
 
@@ -24,6 +25,8 @@ export interface InputPlaybackShareDto {
   token?: string;
   expiresAt?: string;
   expiresInSeconds?: number;
+  iframeEmbedCode: string;
+  scriptEmbedCode: string;
 }
 
 function pickWebPlaybackOutput(outputs: Output[]): Output | null {
@@ -51,7 +54,11 @@ function resolveEffectiveDomainBlock(
 
 function policyNeedsToken(block: DomainBlock | undefined): boolean {
   if (!block) return false;
-  return block.playbackAccessPolicy === 'token-required' || Boolean(block.tokenRequired);
+  return (
+    block.playbackAccessPolicy === 'token-required' ||
+    block.playbackAccessPolicy === 'restricted' ||
+    Boolean(block.tokenRequired)
+  );
 }
 
 function usesProtectedPlayback(block: DomainBlock | undefined): boolean {
@@ -146,6 +153,16 @@ export async function buildInputPlaybackShare(
     }).toString()}`
   );
 
+  const iframeEmbedCode = `<!-- HydroFoil Player (iframe) -->
+<iframe
+  src=${JSON.stringify(embedUrl)}
+  title=${JSON.stringify(`${app}/${stream}`)}
+  width="960"
+  height="540"
+  style="border:0;border-radius:8px;background:#000;max-width:100%"
+  allow="autoplay; fullscreen; picture-in-picture"
+></iframe>`;
+
   return {
     app,
     stream,
@@ -159,5 +176,7 @@ export async function buildInputPlaybackShare(
     token,
     expiresAt: token ? new Date(Date.now() + expiresInSeconds * 1000).toISOString() : undefined,
     expiresInSeconds: token ? expiresInSeconds : undefined,
+    iframeEmbedCode,
+    scriptEmbedCode: buildScriptEmbedCode(hlsUrl, input.name),
   };
 }

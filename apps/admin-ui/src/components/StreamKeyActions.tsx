@@ -30,7 +30,11 @@ export const StreamKeyActions: React.FC<StreamKeyActionsProps> = ({
   onRecord,
   onDeleted,
 }) => (
-  <div className="flex items-center gap-0.5 shrink-0 flex-wrap justify-end">
+  <div
+    className={`flex items-center gap-0.5 shrink-0 flex-wrap justify-end ${
+      isPublishing ? 'hf-live-row !px-1.5 !py-1' : ''
+    }`}
+  >
     <StreamMediaActions
       inputId={input.id}
       target={{

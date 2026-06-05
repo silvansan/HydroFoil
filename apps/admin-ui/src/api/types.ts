@@ -269,6 +269,8 @@ export interface InputPlaybackShare {
   token?: string;
   expiresAt?: string;
   expiresInSeconds?: number;
+  iframeEmbedCode: string;
+  scriptEmbedCode: string;
 }
 
 /** Resolved SRS playback paths for operator preview (from GET /api/playback/resolve). */

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Circle, Code2, Link2, Pencil, Play, Radio, Trash2 } from 'lucide-react';
+import { Circle, Code2, Link2, Pencil, Play, Trash2 } from 'lucide-react';
 
 import { IconActionButton } from './IconActionButton';
 import { DeleteButton } from './DeleteButton';
@@ -11,7 +11,6 @@ import {
 } from '../lib/stream-media';
 import { api } from '../api/client';
 import { copyText } from '../lib/clipboard';
-import { rtmpMonitorUrl } from '../lib/playback';
 import { useInputPlaybackShare } from '../hooks/useInputPlaybackShare';
 
 export interface StreamMediaActionsProps {
@@ -25,8 +24,6 @@ export interface StreamMediaActionsProps {
   showShare?: boolean;
   /** Show HLS copy/embed actions while live (ingest or output path). */
   showLiveWebShare?: boolean;
-  /** RTMP play URL to copy for live streams (VLC / vMix). */
-  rtmpPlayUrl?: string;
   allowPreviewWithoutHls?: boolean;
   onRecord?: () => void;
   recordEnabled?: boolean;
@@ -44,7 +41,6 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
   onNotify,
   showShare = true,
   showLiveWebShare,
-  rtmpPlayUrl: rtmpPlayUrlProp,
   allowPreviewWithoutHls = false,
   onRecord,
   recordEnabled = true,
@@ -63,11 +59,7 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
   const canMonitor = Boolean(onMonitor && isLive);
   const canPreview = hasHls || allowPreviewWithoutHls || canMonitor;
   const liveWebShare = showLiveWebShare ?? isLive;
-  const rtmpPlayUrl =
-    rtmpPlayUrlProp ??
-    (isLive ? rtmpMonitorUrl(target.streamKey, target.gatewayApp) : undefined);
   const canShare = (showShare && hasHls && !isLive) || (liveWebShare && hasHls);
-  const canCopyRtmp = Boolean(isLive && rtmpPlayUrl);
 
   const notify = (message: string) => onNotify?.(message);
 
@@ -82,13 +74,6 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
       return mediaTarget;
     }
   }, [mediaTarget, inputId]);
-
-  const copy = async (e: React.MouseEvent, text: string, success: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const ok = await copyText(text);
-    notify(ok ? success : 'Copy failed');
-  };
 
   const copyEmbed = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -121,27 +106,11 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
         icon={Play}
         onClick={openPlayback}
         disabled={!canPreview}
-        iconFill="currentColor"
       />
-      {canCopyRtmp && (
-        <IconActionButton
-          label="Copy RTMP play URL"
-          icon={Radio}
-          onClick={(e) => copy(e, rtmpPlayUrl!, 'RTMP play URL copied')}
-        />
-      )}
       {canShare && (
         <>
-          <IconActionButton
-            label="Copy embed code"
-            icon={Code2}
-            onClick={copyEmbed}
-          />
-          <IconActionButton
-            label="Copy HLS link"
-            icon={Link2}
-            onClick={copyHls}
-          />
+          <IconActionButton label="Copy embed code" icon={Code2} onClick={copyEmbed} />
+          <IconActionButton label="Copy HLS link" icon={Link2} onClick={copyHls} />
         </>
       )}
       {onRecord && (

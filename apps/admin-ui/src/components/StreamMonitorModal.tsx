@@ -12,7 +12,7 @@ interface StreamMonitorModalProps {
   onClose: () => void;
 }
 
-/** Play / monitor popup — WebRTC first, FLV fallback, optional RTMP URL. */
+/** Play / monitor popup — WebRTC first, HTTP-FLV fallback. */
 export const StreamMonitorModal: React.FC<StreamMonitorModalProps> = ({ target, onClose }) => {
   const { streamKey, gatewayApp, label, status } = target;
 
@@ -64,12 +64,7 @@ export const StreamMonitorModal: React.FC<StreamMonitorModalProps> = ({ target, 
         </div>
 
         <div className="p-5">
-          <LiveStreamPlayPanel
-            streamKey={streamKey}
-            gatewayApp={gatewayApp}
-            status={status}
-            showRtmpUrl
-          />
+          <LiveStreamPlayPanel streamKey={streamKey} gatewayApp={gatewayApp} status={status} />
         </div>
 
         <div className="flex justify-end border-t border-slate-700/50 px-5 py-3">

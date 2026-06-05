@@ -213,9 +213,12 @@ export function parseSrtIngestUrl(url: string): SrtProtocolConfig | null {
   }
 }
 
-export function ingestProtocolDisplayLabel(protocol: string): string {
+export function ingestProtocolDisplayLabel(protocol: string, url?: string): string {
+  if (protocol === 'rtmp') {
+    const scheme = url?.startsWith('rtmps://') ? 'RTMPS' : 'RTMP';
+    return `${scheme} ingest`;
+  }
   const labels: Record<string, string> = {
-    rtmp: 'RTMP',
     rtsp: 'RTSP',
     srt: 'SRT',
     hls: 'HLS',

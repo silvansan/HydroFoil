@@ -16,7 +16,6 @@ import { CpuHistoryChart } from '../components/CpuHistoryChart';
 import { StreamMediaActions } from '../components/StreamMediaActions';
 import { useStreamMonitorModal } from '../hooks/useStreamMonitorModal';
 import { isAuthSessionError } from '../lib/api-error';
-import { rtmpMonitorUrl } from '../lib/playback';
 
 type WidgetVisibility = {
   cpu: boolean;
@@ -412,7 +411,7 @@ const SystemStatusPage: React.FC = () => {
                   {activeStreamRows.map((row) => (
                     <div
                       key={row.id}
-                      className="rounded-xl border border-slate-800/60 bg-slate-900/30 px-4 py-3"
+                      className="hf-live-row"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
@@ -440,7 +439,6 @@ const SystemStatusPage: React.FC = () => {
                             onMonitor={() => openLiveMonitor(row)}
                             onNotify={notify}
                             showLiveWebShare
-                            rtmpPlayUrl={rtmpMonitorUrl(row.streamKey, row.gatewayApp)}
                           />
                         </div>
                       </div>

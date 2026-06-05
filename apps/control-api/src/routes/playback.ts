@@ -169,24 +169,35 @@ async function enforcePlaybackPolicy(
 
   const allowedDomains = Array.isArray(block.allowedDomains) ? block.allowedDomains : [];
 
-  if (block.playbackAccessPolicy === 'restricted' && !domainMatches(allowedDomains, requestDomain)) {
-    throw new HttpError(403, 'Playback blocked for this domain');
+  const verifyPlaybackToken = () => {
+    if (!token) return false;
+    const payload = playbackTokenService.verifyToken(token);
+    return Boolean(
+      payload &&
+        payload.organizationId === ctx.organizationId &&
+        payload.app === app &&
+        payload.stream === stream
+    );
+  };
+
+  if (block.playbackAccessPolicy === 'restricted') {
+    if (verifyPlaybackToken()) {
+      return output;
+    }
+    if (!domainMatches(allowedDomains, requestDomain)) {
+      throw new HttpError(403, 'Playback blocked for this domain');
+    }
+    return output;
   }
 
   if (block.playbackAccessPolicy === 'token-required' || block.tokenRequired) {
     if (!token) {
       throw new HttpError(401, 'Playback token required');
     }
-    const payload = playbackTokenService.verifyToken(token);
-    if (
-      !payload ||
-      payload.organizationId !== ctx.organizationId ||
-      payload.app !== app ||
-      payload.stream !== stream
-    ) {
+    if (!verifyPlaybackToken()) {
       throw new HttpError(403, 'Invalid playback token');
     }
-    if (!domainMatches(allowedDomains, requestDomain)) {
+    if (allowedDomains.length > 0 && !domainMatches(allowedDomains, requestDomain)) {
       throw new HttpError(403, 'Playback blocked for this domain');
     }
   }
@@ -247,6 +258,8 @@ export function createPublicPlaybackRouter(ctx: AppContext): Router {
         stream: share.stream,
         playerHlsUrl: share.hlsUrl,
         embedUrl: share.embedUrl,
+        iframeEmbedCode: share.iframeEmbedCode,
+        scriptEmbedCode: share.scriptEmbedCode,
         playbackAccessPolicy: share.playbackAccessPolicy,
         requiresToken: Boolean(share.token),
         token: share.token,

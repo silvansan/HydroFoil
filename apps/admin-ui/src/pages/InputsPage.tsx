@@ -270,7 +270,7 @@ const InputsPage: React.FC = () => {
                       <ChevronRight size={18} className="text-slate-500" />
                     </Link>
                     <p className="font-mono text-xs text-brand-400/90 mt-1">
-                      rtmp://…/{app.appName}/&lt;stream-key&gt;
+                      rtmps://…/{app.appName}/&lt;stream-key&gt;
                     </p>
                   </div>
                   <div className="flex gap-2 items-center">
@@ -385,10 +385,10 @@ const InputsPage: React.FC = () => {
             value={appForm.appName}
             onChange={(e) => setAppForm((f) => ({ ...f, appName: e.target.value }))}
           />
-          <p className="text-xs hf-muted -mt-2">Lowercase letters, numbers, hyphens — used in the RTMP URL.</p>
+          <p className="text-xs hf-muted -mt-2">Lowercase letters, numbers, hyphens — used in the RTMPS ingest URL.</p>
           {appSlugPreview && (
             <p className="text-xs font-mono text-brand-400/90">
-              Publish pattern: rtmp://host:1935/{appSlugPreview}/&lt;stream-key&gt;
+              Publish pattern: rtmps://host:1936/{appSlugPreview}/&lt;stream-key&gt;
             </p>
           )}
           <TextInput

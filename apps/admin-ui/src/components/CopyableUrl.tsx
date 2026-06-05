@@ -13,7 +13,7 @@ export function isWebUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
 
-/** HTTP(S): opens in a new tab. RTMP and others: click copies to clipboard. */
+/** HTTP(S): opens in a new tab. RTMPS and others: click copies to clipboard. */
 export const ClickableStreamUrl: React.FC<CopyableUrlProps> = (props) => {
   const { url, className = '' } = props;
   if (isWebUrl(url)) {
@@ -34,7 +34,8 @@ export const ClickableStreamUrl: React.FC<CopyableUrlProps> = (props) => {
 };
 
 /** Clickable URL text — copies to clipboard for pasting into encoders or tools. */
-export const CopyableUrl: React.FC<CopyableUrlProps> = ({  url,
+export const CopyableUrl: React.FC<CopyableUrlProps> = ({
+  url,
   className = '',
   onCopied,
   copiedMessage = 'Ingest URL copied — paste into your encoder',
@@ -58,11 +59,9 @@ export const CopyableUrl: React.FC<CopyableUrlProps> = ({  url,
       type="button"
       onClick={handleClick}
       title={copied ? 'Copied!' : 'Click to copy'}
-      className={`font-mono text-left truncate transition-colors cursor-pointer rounded px-1 -mx-1 underline-offset-2 hover:underline ${
-        copied
-          ? 'text-brand-300'
-          : 'text-slate-500 hover:text-brand-300 hover:bg-brand-500/10'
-      } ${className}`}
+      className={`hf-copyable-url font-mono text-left break-all transition-colors cursor-pointer ${className} ${
+        copied ? 'border-[color-mix(in_srgb,var(--hf-brand-500)_40%,transparent)] text-[var(--hf-brand-500)]' : ''
+      }`}
     >
       {url}
     </button>

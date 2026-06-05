@@ -24,6 +24,9 @@ export function hlsUrlForTarget(target: StreamMediaTarget): string {
 }
 
 export function embedCodeForTarget(target: StreamMediaTarget): string {
+  if (target.playbackShare?.iframeEmbedCode) {
+    return target.playbackShare.iframeEmbedCode;
+  }
   if (target.playbackShare) {
     return buildLiveIframeEmbedCode(
       target.playbackShare.stream,

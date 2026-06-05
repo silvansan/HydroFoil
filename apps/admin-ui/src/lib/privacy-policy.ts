@@ -2,6 +2,62 @@ import type { DomainBlock } from '../api/types';
 
 export type PlaybackAccessPolicy = DomainBlock['playbackAccessPolicy'];
 
+export type StreamKeyPrivacyPreset = 'public' | 'token-required' | 'restricted';
+
+export const STREAM_KEY_PRIVACY_PRESETS: Array<{
+  value: StreamKeyPrivacyPreset;
+  title: string;
+  description: string;
+  requiresDomains: boolean;
+  optionalDomains: boolean;
+}> = [
+  {
+    value: 'public',
+    title: 'Open',
+    description: 'Plain HLS and iframe. No signing or domain checks.',
+    requiresDomains: false,
+    optionalDomains: false,
+  },
+  {
+    value: 'token-required',
+    title: 'Partner embed (recommended)',
+    description:
+      'Signed iframe, signed HLS, and script embed. Optionally limit to listed partner domains.',
+    requiresDomains: false,
+    optionalDomains: true,
+  },
+  {
+    value: 'restricted',
+    title: 'Listed sites only',
+    description:
+      'Protected HLS on allowed domains. Script embed gives the strictest control on your site.',
+    requiresDomains: true,
+    optionalDomains: false,
+  },
+];
+
+export function presetFromDomainBlock(block: DomainBlock | undefined): StreamKeyPrivacyPreset {
+  if (!block) return 'public';
+  return block.playbackAccessPolicy;
+}
+
+export function streamKeyPrivacyFormErrors(values: {
+  privacyPreset: StreamKeyPrivacyPreset;
+  allowedDomains: string;
+  limitDomains: boolean;
+}): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (values.privacyPreset === 'restricted') {
+    const domainError = validateAllowedDomains(values.allowedDomains);
+    if (domainError) errors.allowedDomains = domainError;
+  }
+  if (values.privacyPreset === 'token-required' && values.limitDomains) {
+    const domainError = validateAllowedDomains(values.allowedDomains);
+    if (domainError) errors.allowedDomains = domainError;
+  }
+  return errors;
+}
+
 export const PLAYBACK_ACCESS_OPTIONS: Array<{
   value: PlaybackAccessPolicy;
   title: string;

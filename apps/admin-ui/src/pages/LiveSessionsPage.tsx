@@ -147,7 +147,7 @@ const LiveSessionsPage: React.FC = () => {
                         {cell(uptime, true)}
                       </td>
                       <RowActionsCell className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="hf-live-row inline-flex items-center !px-2 !py-1.5">
                           <StreamMediaActions
                             inputId={session.inputId}
                             target={{

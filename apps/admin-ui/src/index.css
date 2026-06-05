@@ -180,6 +180,59 @@ html {
     color: var(--hf-brand-500);
   }
 
+  .hf-live-row {
+    @apply rounded-xl px-4 py-3;
+    border: 1px solid color-mix(in srgb, var(--hf-border) 70%, transparent);
+    background-color: color-mix(in srgb, var(--hf-panel) 88%, transparent);
+  }
+
+  :root:not([data-theme='light']) .hf-live-row {
+    @apply border-slate-800/60 bg-slate-900/30;
+  }
+
+  :root[data-theme='light'] .hf-live-row {
+    background-color: color-mix(in srgb, var(--hf-brand-600) 5%, var(--hf-panel));
+    border-color: var(--hf-border);
+  }
+
+  .hf-copyable-url {
+    @apply rounded-lg border px-3 py-2;
+    border-color: color-mix(in srgb, var(--hf-border) 70%, transparent);
+    background-color: var(--hf-field);
+    color: var(--hf-text);
+  }
+
+  .hf-copyable-url:hover {
+    border-color: color-mix(in srgb, var(--hf-brand-500) 35%, transparent);
+    color: var(--hf-brand-500);
+  }
+
+  .hf-policy-section {
+    @apply rounded-xl border p-4;
+    border-color: color-mix(in srgb, var(--hf-border) 70%, transparent);
+    background-color: color-mix(in srgb, var(--hf-panel) 92%, transparent);
+  }
+
+  :root[data-theme='light'] .hf-policy-section {
+    background-color: color-mix(in srgb, var(--hf-brand-600) 3%, var(--hf-panel));
+  }
+
+  .hf-selectable-card {
+    @apply rounded-lg border px-3 py-2.5 cursor-pointer transition-all;
+    border-color: color-mix(in srgb, var(--hf-border) 75%, transparent);
+    background-color: var(--hf-field);
+  }
+
+  .hf-selectable-card:hover {
+    border-color: color-mix(in srgb, var(--hf-brand-500) 28%, transparent);
+  }
+
+  .hf-selectable-card-selected {
+    border-color: color-mix(in srgb, var(--hf-brand-500) 45%, transparent);
+    background-color: color-mix(in srgb, var(--hf-brand-500) 8%, var(--hf-panel));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--hf-brand-500) 12%, transparent);
+  }
+
   :root[data-theme='light'] .text-slate-100,
   :root[data-theme='light'] .text-slate-200,
   :root[data-theme='light'] .text-slate-300 {
@@ -193,6 +246,9 @@ html {
 
   :root[data-theme='light'] .bg-slate-900\/40,
   :root[data-theme='light'] .bg-slate-900\/50,
+  :root[data-theme='light'] .bg-slate-900\/30,
+  :root[data-theme='light'] .bg-slate-950\/30,
+  :root[data-theme='light'] .bg-slate-950\/40,
   :root[data-theme='light'] .bg-slate-800\/40,
   :root[data-theme='light'] .bg-slate-700\/80 {
     background-color: color-mix(in srgb, var(--hf-panel) 88%, transparent);

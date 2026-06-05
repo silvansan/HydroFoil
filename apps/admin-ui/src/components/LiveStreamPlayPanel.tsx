@@ -3,8 +3,7 @@ import React from 'react';
 import { Button } from '@hydrofoil/ui-kit';
 
 import { useLivePlaybackResolve } from '../hooks/useLivePlaybackResolve';
-import { playbackUrlsForIngest, rtmpMonitorUrl } from '../lib/playback';
-import { CopyableUrl } from './CopyableUrl';
+import { playbackUrlsForIngest } from '../lib/playback';
 import { RtmpMonitorPlayer } from './RtmpMonitorPlayer';
 import { WhepPlayer } from './WhepPlayer';
 
@@ -14,7 +13,6 @@ export interface LiveStreamPlayPanelProps {
   streamKey: string;
   gatewayApp: string;
   status?: string;
-  showRtmpUrl?: boolean;
 }
 
 /** In-browser live play: WebRTC/WHEP first, HTTP-FLV fallback. */
@@ -22,7 +20,6 @@ export const LiveStreamPlayPanel: React.FC<LiveStreamPlayPanelProps> = ({
   streamKey,
   gatewayApp,
   status,
-  showRtmpUrl = true,
 }) => {
   const isPublishing = status === 'publishing';
   const playback = useLivePlaybackResolve(gatewayApp, streamKey, {
@@ -37,7 +34,6 @@ export const LiveStreamPlayPanel: React.FC<LiveStreamPlayPanelProps> = ({
   const [webrtcFailed, setWebrtcFailed] = React.useState(false);
 
   const activeMode = webrtcFailed ? 'flv' : mode;
-  const rtmpPlay = playback.resolved?.rtmpPlayUrl ?? rtmpMonitorUrl(streamKey, gatewayApp);
   const showPlayer = isPublishing || playback.playable || playback.active;
 
   const handleWebrtcError = React.useCallback(() => {
@@ -59,7 +55,7 @@ export const LiveStreamPlayPanel: React.FC<LiveStreamPlayPanelProps> = ({
         <p className="text-xs text-slate-400">
           {activeMode === 'webrtc'
             ? 'WebRTC/WHEP — lowest latency (~0.5–2s).'
-            : 'HTTP-FLV fallback (~2–5s). Same stream as RTMP/VLC.'}
+            : 'HTTP-FLV fallback (~2–5s).'}
         </p>
         <div className="flex gap-1">
           <Button
@@ -96,15 +92,7 @@ export const LiveStreamPlayPanel: React.FC<LiveStreamPlayPanelProps> = ({
           gatewayApp={gatewayApp}
           flvSrc={playback.monitorFlvUrl}
           vhost={playback.resolved?.vhost}
-          rtmpPlayUrl={rtmpPlay}
         />
-      )}
-
-      {showRtmpUrl && (
-        <div>
-          <label className="text-xs font-medium text-slate-400">RTMP play (VLC / vMix)</label>
-          <CopyableUrl url={rtmpPlay} className="mt-1 text-xs break-all" />
-        </div>
       )}
     </div>
   );
