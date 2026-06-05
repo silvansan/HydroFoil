@@ -1,10 +1,10 @@
 import type { Input, Output } from '@hydrofoil/shared-types';
 
+import { probeUpstreamMedia } from '../lib/srs-upstream-fetch';
 import {
   findSrsStream,
   listSrsStreams,
   normalizeApp,
-  probeUpstreamPlayable,
   resolveLivePlayback,
 } from './playback-resolver';
 
@@ -78,19 +78,12 @@ export async function resolvePlayableWebHlsTarget(options: {
 
   for (const candidate of candidates) {
     const resolved = await resolveLivePlayback(candidate.app, candidate.stream, {
-      probe: true,
+      probe: false,
       monitorMode: 'http',
     });
     if (resolved.active) anyActive = true;
-    if (resolved.playable) {
-      return {
-        app: candidate.app,
-        stream: candidate.stream,
-        active: resolved.active,
-        hlsPlayable: true,
-      };
-    }
-    if (await probeUpstreamPlayable(resolved.upstreamHls)) {
+    const hlsPath = `/${normalizeApp(candidate.app)}/${candidate.stream.replace(/^\/+|\/+$/g, '')}.m3u8`;
+    if (await probeUpstreamMedia(hlsPath)) {
       return {
         app: candidate.app,
         stream: candidate.stream,

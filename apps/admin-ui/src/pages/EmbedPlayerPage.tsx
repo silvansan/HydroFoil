@@ -29,7 +29,7 @@ const EmbedPlayerPage: React.FC = () => {
     if (token && manifest.manifest?.playerHlsUrl) {
       return manifest.manifest.playerHlsUrl;
     }
-    if (isLive && manifest.manifest?.playerHlsUrl) {
+    if (isLive && manifest.manifest?.playable && manifest.manifest?.playerHlsUrl) {
       return manifest.manifest.playerHlsUrl;
     }
     return '';

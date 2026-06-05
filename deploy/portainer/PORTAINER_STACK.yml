@@ -239,6 +239,10 @@ services:
   srs:
     image: ossrs/srs:5
     restart: unless-stopped
+    environment:
+      # Public ingest hostname (same as PUBLIC_APP_URL host). Enables HLS for RTMPS publishers.
+      SRS_INGEST_VHOST: ${SRS_INGEST_VHOST:-}
+    entrypoint: ['/bin/sh', '/usr/local/bin/hydrofoil-srs-entrypoint.sh']
     ports:
       - '${SRS_RTMP_PORT:-1935}:1935'
       - '${SRS_HTTP_PORT:-8080}:8080'
@@ -251,6 +255,7 @@ services:
         target: /usr/local/srs/conf/srs.conf
     volumes:
       - srs_data:/usr/local/srs/objs/nginx/html
+      - ./srs-entrypoint.sh:/usr/local/bin/hydrofoil-srs-entrypoint.sh:ro
     depends_on:
       control-api:
         condition: service_started

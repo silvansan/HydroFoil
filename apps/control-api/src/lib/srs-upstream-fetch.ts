@@ -85,6 +85,17 @@ export type FetchFromSrsOptions = {
   preferredPaths?: string[];
 };
 
+/** Probe SRS using the same upstream fallbacks as /srs-media proxy. */
+export async function probeUpstreamMedia(pathOnly: string): Promise<boolean> {
+  try {
+    const normalized = pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`;
+    const result = await fetchFromSrsUpstream(normalized);
+    return result.status >= 200 && result.status < 300;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchFromSrsUpstream(
   pathWithQuery: string,
   options?: FetchFromSrsOptions
