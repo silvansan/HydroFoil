@@ -10,6 +10,17 @@ import {
 
 const SRS_BASE = () => config.srsPlaybackBaseUrl.replace(/\/$/, '');
 
+/** Express mounted routers pass paths without a leading slash — SRS resolution requires one. */
+export function normalizeUpstreamMediaPath(pathWithQuery: string): string {
+  const queryIndex = pathWithQuery.indexOf('?');
+  const pathOnly = (queryIndex >= 0 ? pathWithQuery.slice(0, queryIndex) : pathWithQuery).replace(
+    /^\/+/,
+    ''
+  );
+  const query = queryIndex >= 0 ? pathWithQuery.slice(queryIndex) : '';
+  return `/${pathOnly}${query}`;
+}
+
 function publicHostnames(): string[] {
   const hosts = new Set<string>();
   for (const raw of [config.publicAppUrl, config.srsRtmpForwardBase]) {
@@ -106,9 +117,10 @@ export async function fetchFromSrsUpstream(
   resolvedPath?: string;
 }> {
   const base = SRS_BASE();
-  const pathOnly = pathWithQuery.split('?')[0] ?? pathWithQuery;
-  const extraQuery = pathWithQuery.includes('?')
-    ? pathWithQuery.slice(pathWithQuery.indexOf('?'))
+  const normalizedPath = normalizeUpstreamMediaPath(pathWithQuery);
+  const pathOnly = normalizedPath.split('?')[0] ?? normalizedPath;
+  const extraQuery = normalizedPath.includes('?')
+    ? normalizedPath.slice(normalizedPath.indexOf('?'))
     : '';
 
   const resolved = await resolverCandidates(pathOnly);
