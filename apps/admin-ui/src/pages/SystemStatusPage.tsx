@@ -5,12 +5,14 @@ import { api } from '../api/client';
 import type {
   Application,
   BandwidthHistoryResponse,
+  CpuHistoryResponse,
   Input,
   LiveSession,
   SystemTelemetry,
 } from '../api/types';
 import { Alert } from '../components/Alert';
 import { BandwidthHistoryChart } from '../components/BandwidthHistoryChart';
+import { CpuHistoryChart } from '../components/CpuHistoryChart';
 import { StreamMediaActions } from '../components/StreamMediaActions';
 import { useStreamMonitorModal } from '../hooks/useStreamMonitorModal';
 import { isAuthSessionError } from '../lib/api-error';
@@ -86,6 +88,7 @@ const SystemStatusPage: React.FC = () => {
   const [bandwidthHistory, setBandwidthHistory] = React.useState<BandwidthHistoryResponse | null>(
     null
   );
+  const [cpuHistory, setCpuHistory] = React.useState<CpuHistoryResponse | null>(null);
   const [visibility, setVisibility] = React.useState<WidgetVisibility>(loadSavedVisibility);
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
@@ -103,6 +106,7 @@ const SystemStatusPage: React.FC = () => {
       api.listApplications(),
       api.getSystemTelemetry(),
       api.getBandwidthHistory(24),
+      api.getCpuHistory(24),
     ]);
 
     const [
@@ -113,6 +117,7 @@ const SystemStatusPage: React.FC = () => {
       appResult,
       telemetryResult,
       bandwidthResult,
+      cpuHistoryResult,
     ] = results;
 
     const rejections = results
@@ -161,6 +166,9 @@ const SystemStatusPage: React.FC = () => {
     }
     if (bandwidthResult.status === 'fulfilled') {
       setBandwidthHistory(bandwidthResult.value);
+    }
+    if (cpuHistoryResult.status === 'fulfilled') {
+      setCpuHistory(cpuHistoryResult.value);
     }
 
     if (authFailure) {
@@ -359,6 +367,33 @@ const SystemStatusPage: React.FC = () => {
                   hours={bandwidthHistory?.hours ?? 24}
                 />
               </div>
+
+              <div className="mt-8 border-t border-slate-700/50 pt-6">
+                  <h3 className="text-base font-semibold text-slate-100">CPU usage</h3>
+                  <p className="mt-1 text-sm hf-muted">
+                    Host CPU % — sampled every minute, last 24 hours.
+                  </p>
+                  {telemetry && (
+                    <p className="mt-2 text-sm text-slate-300">
+                      Now:{' '}
+                      <span className="font-medium text-slate-100">
+                        {telemetry.cpu.usagePercent === null
+                          ? 'Sampling…'
+                          : `${telemetry.cpu.usagePercent.toFixed(1)}%`}
+                      </span>
+                      <span className="hf-muted">
+                        {' '}
+                        · load 1m {telemetry.cpu.loadAverage1m.toFixed(2)}
+                      </span>
+                    </p>
+                  )}
+                  <div className="mt-4">
+                    <CpuHistoryChart
+                      samples={cpuHistory?.samples ?? []}
+                      hours={cpuHistory?.hours ?? 24}
+                    />
+                  </div>
+                </div>
             </Card>
           )}
 

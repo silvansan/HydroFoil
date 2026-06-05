@@ -20,6 +20,7 @@ import type {
   StorageLocation,
   StreamProfile,
   BandwidthHistoryResponse,
+  CpuHistoryResponse,
   SystemTelemetry,
   User,
   UserAccess,
@@ -579,6 +580,10 @@ export const api = {
   getBandwidthHistory: (hours = 24) =>
     request<BandwidthHistoryResponse>(
       `/api/system/bandwidth-history?hours=${encodeURIComponent(String(hours))}`
+    ),
+  getCpuHistory: (hours = 24) =>
+    request<CpuHistoryResponse>(
+      `/api/system/cpu-history?hours=${encodeURIComponent(String(hours))}`
     ),
   getOperatorPublicUrls: () =>
     request<{

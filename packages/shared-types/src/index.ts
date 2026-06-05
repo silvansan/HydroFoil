@@ -285,6 +285,18 @@ export interface BandwidthHistoryResponse {
   samples: BandwidthHistorySample[];
 }
 
+export interface CpuHistorySample {
+  recordedAt: string;
+  usagePercent: number | null;
+  loadAverage1m: number;
+}
+
+export interface CpuHistoryResponse {
+  hours: number;
+  intervalSeconds: number;
+  samples: CpuHistorySample[];
+}
+
 // API Request/Response types
 export interface CreateApplicationRequest {
   name: string;
