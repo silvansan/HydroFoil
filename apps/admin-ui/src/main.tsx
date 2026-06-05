@@ -9,7 +9,6 @@ import RequireAuth from './components/RequireAuth';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import RequestAccessPage from './pages/RequestAccessPage';
-import EmbedPlayerPage from './pages/EmbedPlayerPage';
 import InputsPage from './pages/InputsPage';
 import ApplicationDetailPage from './pages/ApplicationDetailPage';
 import RestreamingPage from './pages/RestreamingPage';
@@ -35,6 +34,10 @@ import RequireAdmin from './components/RequireAdmin';
 import VodRoutesPage from './pages/VodRoutesPage';
 import VodRouteSettingsPage from './pages/VodRouteSettingsPage';
 
+const DevEmbedPlayerPage = import.meta.env.DEV
+  ? React.lazy(() => import('./pages/EmbedPlayerPage'))
+  : null;
+
 const App: React.FC = () => {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -43,7 +46,16 @@ const App: React.FC = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/request-access" element={<RequestAccessPage />} />
-          <Route path="/embed" element={<EmbedPlayerPage />} />
+          {DevEmbedPlayerPage ? (
+            <Route
+              path="/embed"
+              element={
+                <React.Suspense fallback={null}>
+                  <DevEmbedPlayerPage />
+                </React.Suspense>
+              }
+            />
+          ) : null}
           <Route
             path="/*"
             element={

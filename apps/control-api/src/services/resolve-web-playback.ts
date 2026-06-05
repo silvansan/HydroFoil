@@ -68,10 +68,13 @@ export async function resolvePlayableWebHlsTarget(options: {
     }));
 
   const siblingTargets = await srsSiblingTargets(ingestApp, ingestStream);
+  const liveAppFallback =
+    ingestApp !== 'live' ? [{ app: 'live', stream: ingestStream }] : [];
   const candidates = uniqueTargets([
     { app: ingestApp, stream: ingestStream },
     ...outputTargets,
     ...siblingTargets,
+    ...liveAppFallback,
   ]);
 
   let anyActive = false;

@@ -8,7 +8,17 @@ CONF_SRC=/usr/local/srs/conf/srs.conf
 CONF=/tmp/srs.conf
 VHOST="${SRS_INGEST_VHOST:-}"
 
+if [ -z "$VHOST" ] && [ -n "$PUBLIC_APP_URL" ]; then
+  VHOST=$(printf '%s' "$PUBLIC_APP_URL" | sed -E 's#^[a-zA-Z]+://##' | cut -d/ -f1 | cut -d: -f1)
+fi
+
 cp "$CONF_SRC" "$CONF"
+
+if [ -n "$VHOST" ]; then
+  echo "[hydrofoil-srs] ingest vhost target: ${VHOST}"
+else
+  echo "[hydrofoil-srs] warning: no SRS_INGEST_VHOST or PUBLIC_APP_URL — RTMPS embed HLS may 404"
+fi
 
 if [ -n "$VHOST" ] && [ "$VHOST" != "localhost" ] && [ "$VHOST" != "__defaultVhost__" ]; then
   if ! grep -q "vhost ${VHOST} {" "$CONF"; then
