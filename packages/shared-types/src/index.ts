@@ -273,6 +273,18 @@ export interface SystemTelemetry {
   gpu: SystemGpuTelemetry;
 }
 
+export interface BandwidthHistorySample {
+  recordedAt: string;
+  totalKbps: number;
+  streamCount: number;
+}
+
+export interface BandwidthHistoryResponse {
+  hours: number;
+  intervalSeconds: number;
+  samples: BandwidthHistorySample[];
+}
+
 // API Request/Response types
 export interface CreateApplicationRequest {
   name: string;

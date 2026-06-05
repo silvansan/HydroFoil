@@ -5,10 +5,10 @@ HydroFoil separates **ingest/monitor** from **web delivery**:
 | Mode | Protocol | Where | How operators use it |
 |------|----------|--------|----------------------|
 | **Ingest** | RTMP / SRT | SRS ingest path | OBS, vMix — `rtmp://your-host:1935/{app}/{streamKey}` |
-| **Monitor** | RTMP play | Same SRS stream | VLC, vMix preview — copy **Play** URL from Preview (same URL while live) |
+| **Monitor** | RTMP play / HTTP-FLV | Same SRS stream | In-app player (HTTP-FLV remux) or VLC — copy **Play** URL from Preview |
 | **Web / embed** | HLS | Outputs, restreams, transcode renditions | Browser player, iframe embed — add an **HLS** output or restream |
 
-Browsers cannot play RTMP. The admin **Preview** dialog does not rely on in-browser HLS/FLV for the raw ingest path.
+Browsers cannot play `rtmp://` directly. The admin **Preview** and **Monitor** dialogs play the same RTMP ingest via **HTTP-FLV** from SRS (`/srs-media/{app}/{stream}.flv`). External tools still use the RTMP play URL.
 
 ## New inputs
 

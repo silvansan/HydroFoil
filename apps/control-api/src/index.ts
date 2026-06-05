@@ -10,6 +10,7 @@ import { GatewayOrchestrator } from './services/gateway-orchestrator';
 import { RecordingOrchestrator } from './services/recording-orchestrator';
 import { RestreamOrchestrator } from './services/restream-orchestrator';
 import { AudioOrchestrator } from './services/audio-orchestrator';
+import { startBandwidthHistorySampler } from './services/bandwidth-history';
 
 const logger = pino();
 
@@ -52,6 +53,8 @@ async function bootstrap() {
     restreams,
     audio,
   });
+
+  startBandwidthHistorySampler();
 
   app.listen(config.port, () => {
     logger.info(

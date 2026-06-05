@@ -17,6 +17,21 @@ function iceServersFromEnv(): RTCIceServer[] {
     .map((url: string) => ({ urls: url }));
 }
 
+/** Resolve SRS Location header for WHEP session teardown (avoid wrong /whip/ paths). */
+function resolveWhepSessionUrl(location: string, _whepEndpoint: string): string {
+  const normalized = location.replace(/\/whip\//gi, '/whep/');
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    return normalized;
+  }
+  const apiBase = (import.meta.env.VITE_SRS_API_BASE ?? '/srs-api').replace(/\/$/, '');
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const path = normalized.startsWith('/') ? normalized : `/${normalized}`;
+  if (path.startsWith(apiBase) || path.startsWith('/rtc/')) {
+    return `${origin}${path}`;
+  }
+  return `${origin}${apiBase}${path}`;
+}
+
 function waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
   return new Promise((resolve) => {
@@ -87,7 +102,7 @@ export const WhepPlayer: React.FC<WhepPlayerProps> = ({
         }
 
         const location = response.headers.get('Location');
-        if (location) sessionUrl = location;
+        if (location) sessionUrl = resolveWhepSessionUrl(location, endpoint);
 
         const answerSdp = await response.text();
         await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });

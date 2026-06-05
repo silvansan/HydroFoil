@@ -19,6 +19,7 @@ import type {
   Route,
   StorageLocation,
   StreamProfile,
+  BandwidthHistoryResponse,
   SystemTelemetry,
   User,
   UserAccess,
@@ -575,6 +576,10 @@ export const api = {
 
   getHealth: () => request<{ status: string; database: string }>('/api/health'),
   getSystemTelemetry: () => request<SystemTelemetry>('/api/system/telemetry'),
+  getBandwidthHistory: (hours = 24) =>
+    request<BandwidthHistoryResponse>(
+      `/api/system/bandwidth-history?hours=${encodeURIComponent(String(hours))}`
+    ),
   getOperatorPublicUrls: () =>
     request<{
       rtmpIngestBase: string;

@@ -2,9 +2,19 @@ import React from 'react';
 import { PageHeader, Card, Badge } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
-import type { Application, Input, LiveSession, SystemTelemetry } from '../api/types';
+import type {
+  Application,
+  BandwidthHistoryResponse,
+  Input,
+  LiveSession,
+  SystemTelemetry,
+} from '../api/types';
 import { Alert } from '../components/Alert';
+import { BandwidthHistoryChart } from '../components/BandwidthHistoryChart';
+import { StreamMediaActions } from '../components/StreamMediaActions';
+import { useStreamMonitorModal } from '../hooks/useStreamMonitorModal';
 import { isAuthSessionError } from '../lib/api-error';
+import { rtmpMonitorUrl } from '../lib/playback';
 
 type WidgetVisibility = {
   cpu: boolean;
@@ -60,6 +70,7 @@ function loadSavedVisibility(): WidgetVisibility {
 }
 
 const SystemStatusPage: React.FC = () => {
+  const { openMonitor, monitorModal } = useStreamMonitorModal();
   const [status, setStatus] = React.useState<DashboardState>({
     api: 'connecting',
     database: 'connecting',
@@ -72,9 +83,12 @@ const SystemStatusPage: React.FC = () => {
   const [inputs, setInputs] = React.useState<Input[]>([]);
   const [sessions, setSessions] = React.useState<LiveSession[]>([]);
   const [telemetry, setTelemetry] = React.useState<SystemTelemetry | null>(null);
-  const [groupBandwidthBy, setGroupBandwidthBy] = React.useState<'stream' | 'application'>('stream');
+  const [bandwidthHistory, setBandwidthHistory] = React.useState<BandwidthHistoryResponse | null>(
+    null
+  );
   const [visibility, setVisibility] = React.useState<WidgetVisibility>(loadSavedVisibility);
   const [error, setError] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     window.localStorage.setItem(DASHBOARD_VISIBILITY_KEY, JSON.stringify(visibility));
@@ -88,10 +102,18 @@ const SystemStatusPage: React.FC = () => {
       api.listInputs(),
       api.listApplications(),
       api.getSystemTelemetry(),
+      api.getBandwidthHistory(24),
     ]);
 
-    const [healthResult, gatewayResult, liveResult, inputResult, appResult, telemetryResult] =
-      results;
+    const [
+      healthResult,
+      gatewayResult,
+      liveResult,
+      inputResult,
+      appResult,
+      telemetryResult,
+      bandwidthResult,
+    ] = results;
 
     const rejections = results
       .map((result) => (result.status === 'rejected' ? result.reason : null))
@@ -136,6 +158,9 @@ const SystemStatusPage: React.FC = () => {
     }
     if (telemetryResult.status === 'fulfilled') {
       setTelemetry(telemetryResult.value);
+    }
+    if (bandwidthResult.status === 'fulfilled') {
+      setBandwidthHistory(bandwidthResult.value);
     }
 
     if (authFailure) {
@@ -188,26 +213,29 @@ const SystemStatusPage: React.FC = () => {
         bitrateKbps: session.publisher?.bitrateKbps ?? 0,
         protocol: session.publisher?.sourceProtocol ?? input?.ingestProtocol ?? 'unknown',
         resolution: session.publisher?.resolution ?? '—',
+        inputId: input?.id,
       };
     });
   }, [sessions, inputById, appById]);
 
-  const bandwidthRows = React.useMemo(() => {
-    const totals = new Map<string, { label: string; bitrateKbps: number; count: number }>();
+  const notify = React.useCallback((message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2000);
+  }, []);
 
-    for (const row of activeStreamRows) {
-      const key = groupBandwidthBy === 'application' ? row.applicationName : `${row.gatewayApp}/${row.streamKey}`;
-      const label = groupBandwidthBy === 'application' ? row.applicationName : `${row.gatewayApp}/${row.streamKey}`;
-      const current = totals.get(key) ?? { label, bitrateKbps: 0, count: 0 };
-      current.bitrateKbps += row.bitrateKbps;
-      current.count += 1;
-      totals.set(key, current);
-    }
+  const openLiveMonitor = React.useCallback(
+    (row: (typeof activeStreamRows)[number]) => {
+      openMonitor({
+        streamKey: row.streamKey,
+        gatewayApp: row.gatewayApp,
+        label: row.inputName,
+        status: 'publishing',
+      });
+    },
+    [openMonitor]
+  );
 
-    return [...totals.values()].sort((a, b) => b.bitrateKbps - a.bitrateKbps);
-  }, [activeStreamRows, groupBandwidthBy]);
-
-  const totalBitrateKbps = bandwidthRows.reduce((sum, item) => sum + item.bitrateKbps, 0);
+  const totalBitrateKbps = activeStreamRows.reduce((sum, row) => sum + row.bitrateKbps, 0);
   const activeInputs = inputs.filter((input) => input.enabled).length;
 
   return (
@@ -218,6 +246,12 @@ const SystemStatusPage: React.FC = () => {
       />
 
       {error && <Alert>{error}</Alert>}
+      {monitorModal}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand-600 px-4 py-2 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="p-6">
@@ -302,51 +336,29 @@ const SystemStatusPage: React.FC = () => {
         <div className="space-y-6">
           {visibility.bandwidth && (
             <Card className="p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-100">Bandwidth</h2>
                   <p className="mt-1 text-sm hf-muted">
-                    Estimated from active session bitrate where the publisher reports it.
+                    Total ingest bitrate (SRS recv) — sampled every minute, last 24 hours.
+                  </p>
+                  <p className="mt-2 text-sm text-slate-300">
+                    Now:{' '}
+                    <span className="font-medium text-slate-100">
+                      {totalBitrateKbps.toLocaleString()} kbps
+                    </span>
+                    {activeStreamRows.length > 0 && (
+                      <span className="hf-muted"> · {activeStreamRows.length} live stream(s)</span>
+                    )}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-slate-300">Group by</label>
-                  <select
-                    className="hf-select min-w-44"
-                    value={groupBandwidthBy}
-                    onChange={(event) =>
-                      setGroupBandwidthBy(event.target.value as 'stream' | 'application')
-                    }
-                  >
-                    <option value="stream">Per stream</option>
-                    <option value="application">Per application</option>
-                  </select>
-                </div>
               </div>
-              {bandwidthRows.length === 0 ? (
-                <p className="mt-6 text-sm hf-muted">
-                  No active bitrate telemetry is available right now.
-                </p>
-              ) : (
-                <div className="mt-5 space-y-3">
-                  {bandwidthRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="rounded-xl border border-slate-800/60 bg-slate-900/30 px-4 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-200">{row.label}</p>
-                          <p className="text-xs hf-muted">{row.count} live stream(s)</p>
-                        </div>
-                        <p className="text-sm text-slate-300">
-                          {row.bitrateKbps.toLocaleString()} kbps
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="mt-5">
+                <BandwidthHistoryChart
+                  samples={bandwidthHistory?.samples ?? []}
+                  hours={bandwidthHistory?.hours ?? 24}
+                />
+              </div>
             </Card>
           )}
 
@@ -368,18 +380,33 @@ const SystemStatusPage: React.FC = () => {
                       className="rounded-xl border border-slate-800/60 bg-slate-900/30 px-4 py-3"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-200">{row.inputName}</p>
                           <p className="text-xs text-slate-500">
                             {row.applicationName} · {row.gatewayApp}/{row.streamKey}
                           </p>
+                          <div className="mt-2 grid gap-1 sm:grid-cols-3 text-xs text-slate-400">
+                            <p>Protocol: {row.protocol}</p>
+                            <p>Bitrate: {row.bitrateKbps.toLocaleString()} kbps</p>
+                            <p>Resolution: {row.resolution}</p>
+                          </div>
                         </div>
-                        <Badge variant="success">LIVE</Badge>
-                      </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs text-slate-400">
-                        <p>Protocol: {row.protocol}</p>
-                        <p>Bitrate: {row.bitrateKbps.toLocaleString()} kbps</p>
-                        <p>Resolution: {row.resolution}</p>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <Badge variant="success">LIVE</Badge>
+                          <StreamMediaActions
+                            target={{
+                              streamKey: row.streamKey,
+                              gatewayApp: row.gatewayApp,
+                              label: row.inputName,
+                              status: 'publishing',
+                            }}
+                            onPreview={() => openLiveMonitor(row)}
+                            onMonitor={() => openLiveMonitor(row)}
+                            onNotify={notify}
+                            showLiveWebShare
+                            rtmpPlayUrl={rtmpMonitorUrl(row.streamKey, row.gatewayApp)}
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}

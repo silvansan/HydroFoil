@@ -7,6 +7,8 @@ interface FlvPlayerProps {
   autoPlay?: boolean;
   /** Live monitor (HTTP-FLV from SRS) vs VOD recording. */
   isLive?: boolean;
+  showCaption?: boolean;
+  onError?: () => void;
 }
 
 function resolvePlayerUrl(src: string): string {
@@ -23,6 +25,8 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
   className = '',
   autoPlay = true,
   isLive = true,
+  showCaption = true,
+  onError: onErrorProp,
 }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -36,6 +40,7 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
 
     if (!mpegts.isSupported()) {
       setError('HTTP-FLV is not supported in this browser.');
+      onErrorProp?.();
       return;
     }
 
@@ -65,8 +70,9 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
       setError(
         isLive
           ? 'Could not load FLV stream. Is the encoder still publishing?'
-          : 'Could not load recording. It may still be uploading to storage.'
+          : 'Could not load recording. It may still be uploaded to storage.'
       );
+      onErrorProp?.();
     };
     player.on(mpegts.Events.ERROR, onError);
 
@@ -77,7 +83,7 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
       player.detachMediaElement();
       player.destroy();
     };
-  }, [playUrl, autoPlay, isLive]);
+  }, [playUrl, autoPlay, isLive, onErrorProp]);
 
   return (
     <div className="relative">
@@ -94,9 +100,11 @@ export const FlvPlayer: React.FC<FlvPlayerProps> = ({
           {error}
         </p>
       )}
-      <p className="mt-1 text-xs text-slate-500">
-        {isLive ? 'Monitor mode — lower latency than HLS (~2–5s)' : 'VOD recording (HTTP-FLV)'}
-      </p>
+      {showCaption && (
+        <p className="mt-1 text-xs text-slate-500">
+          {isLive ? 'Monitor mode — lower latency than HLS (~2–5s)' : 'VOD recording (HTTP-FLV)'}
+        </p>
+      )}
     </div>
   );
 };

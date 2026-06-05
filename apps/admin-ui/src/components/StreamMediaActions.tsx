@@ -1,5 +1,5 @@
 import React from 'react';
-import { Circle, Code2, Link2, Pencil, Play, Trash2, Zap } from 'lucide-react';
+import { Circle, Code2, Link2, Pencil, Play, Radio, Trash2 } from 'lucide-react';
 
 import { IconActionButton } from './IconActionButton';
 import { DeleteButton } from './DeleteButton';
@@ -14,12 +14,14 @@ import { copyText } from '../lib/clipboard';
 export interface StreamMediaActionsProps {
   target: StreamMediaTarget;
   onPreview: () => void;
-  /** Low-latency FLV monitor (live streams only). */
+  /** Low-latency WebRTC monitor (live streams only). */
   onMonitor?: () => void;
   onNotify?: (message: string) => void;
-  /** Show copy-link + embed (default true when HLS preview is available). */
   showShare?: boolean;
-  /** Enable Play even without HLS (e.g. recordings before VOD URLs exist). */
+  /** Show HLS copy/embed actions while live (ingest or output path). */
+  showLiveWebShare?: boolean;
+  /** RTMP play URL to copy for live streams (VLC / vMix). */
+  rtmpPlayUrl?: string;
   allowPreviewWithoutHls?: boolean;
   onRecord?: () => void;
   recordEnabled?: boolean;
@@ -29,16 +31,14 @@ export interface StreamMediaActionsProps {
   deleteConfirm?: string;
 }
 
-/**
- * Standard media row actions: preview, embed, copy link, optional record / edit / delete.
- * Use on Inputs, Live Sessions, Restreaming (HLS paths), and Recordings when playable.
- */
 export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
   target,
   onPreview,
   onMonitor,
   onNotify,
   showShare = true,
+  showLiveWebShare = false,
+  rtmpPlayUrl,
   allowPreviewWithoutHls = false,
   onRecord,
   recordEnabled = true,
@@ -48,8 +48,11 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
   deleteConfirm = 'Delete this item?',
 }) => {
   const hasHls = canPreviewHls(target);
-  const canPreview = hasHls || allowPreviewWithoutHls;
-  const canShare = showShare && hasHls;
+  const isLive = target.status === 'publishing';
+  const canMonitor = Boolean(onMonitor && isLive);
+  const canPreview = hasHls || allowPreviewWithoutHls || canMonitor;
+  const canShare = (showShare && hasHls && !isLive) || (showLiveWebShare && hasHls);
+  const canCopyRtmp = Boolean(isLive && rtmpPlayUrl);
 
   const notify = (message: string) => onNotify?.(message);
 
@@ -60,25 +63,30 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
     notify(ok ? success : 'Copy failed');
   };
 
-  const isLive = target.status === 'publishing';
-  const canMonitor = Boolean(onMonitor && isLive);
+  const openPlayback = () => {
+    if (canMonitor && onMonitor) {
+      onMonitor();
+      return;
+    }
+    onPreview();
+  };
 
   return (
     <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-      {canMonitor && (
-        <IconActionButton
-          label="Monitor (low latency)"
-          icon={Zap}
-          onClick={() => onMonitor!()}
-        />
-      )}
       <IconActionButton
-        label={canPreview ? 'Preview (HLS / embed)' : 'Preview unavailable'}
+        label={canMonitor ? 'Play (WebRTC)' : canPreview ? 'Preview' : 'Preview unavailable'}
         icon={Play}
-        onClick={() => onPreview()}
+        onClick={openPlayback}
         disabled={!canPreview}
         iconFill="currentColor"
       />
+      {canCopyRtmp && (
+        <IconActionButton
+          label="Copy RTMP play URL"
+          icon={Radio}
+          onClick={(e) => copy(e, rtmpPlayUrl!, 'RTMP play URL copied')}
+        />
+      )}
       {canShare && (
         <>
           <IconActionButton
@@ -102,9 +110,7 @@ export const StreamMediaActions: React.FC<StreamMediaActionsProps> = ({
           iconFill={recordEnabled ? 'currentColor' : 'none'}
         />
       )}
-      {onEdit && (
-        <IconActionButton label="Edit" icon={Pencil} onClick={onEdit} />
-      )}
+      {onEdit && <IconActionButton label="Edit" icon={Pencil} onClick={onEdit} />}
       {onDelete &&
         (deleteConfirm ? (
           <DeleteButton

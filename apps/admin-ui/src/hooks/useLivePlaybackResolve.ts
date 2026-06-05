@@ -57,6 +57,7 @@ export function useLivePlaybackResolve(
     error,
     monitorFlvUrl,
     playerHlsUrl,
+    vhost: resolved?.vhost ?? null,
     playable: Boolean(resolved?.playable),
     active: Boolean(resolved?.active),
     reload: load,

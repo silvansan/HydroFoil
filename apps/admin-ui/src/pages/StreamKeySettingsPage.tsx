@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Play, Zap } from 'lucide-react';
+import { ArrowLeft, Play } from 'lucide-react';
 import { Card, PageHeader, TextInput, Button } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
@@ -11,10 +11,8 @@ import { CopyableUrl } from '../components/CopyableUrl';
 import { DeleteButton } from '../components/DeleteButton';
 import { SessionStatusBadge } from '../components/SessionStatusBadge';
 import { StreamMediaActions } from '../components/StreamMediaActions';
-import { useStreamPreviewModal } from '../hooks/useStreamPreviewModal';
 import { useStreamMonitorModal } from '../hooks/useStreamMonitorModal';
 import { isSessionPublishing } from '../lib/session-status';
-import { canPreviewHls } from '../lib/stream-media';
 import { ingestProtocolDisplayLabel, ingestUrlForInput } from '../lib/stream';
 
 type TabId = 'settings' | 'sessions';
@@ -38,7 +36,6 @@ const StreamKeySettingsPage: React.FC = () => {
   const [policies, setPolicies] = React.useState<Array<{ id: string; name: string }>>([]);
   const [streamProfiles, setStreamProfiles] = React.useState<StreamProfile[]>([]);
   const [audioFeeds, setAudioFeeds] = React.useState<Array<{ id: string; name: string }>>([]);
-  const { openPreview, previewModal } = useStreamPreviewModal();
   const { openMonitor, monitorModal } = useStreamMonitorModal();
 
   const appName = input?.application?.appName ?? 'live';
@@ -196,7 +193,7 @@ const StreamKeySettingsPage: React.FC = () => {
                 status: activeSession?.status,
               }}
               onPreview={() =>
-                openPreview({
+                openMonitor({
                   streamKey: input.streamKey,
                   gatewayApp: appName,
                   label: input.name,
@@ -220,7 +217,6 @@ const StreamKeySettingsPage: React.FC = () => {
         }
       />
 
-      {previewModal}
       {monitorModal}
       {error && <Alert>{error}</Alert>}
       {saveError && <Alert>{saveError}</Alert>}
@@ -291,35 +287,24 @@ const StreamKeySettingsPage: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-3 pt-1">
                     <Button
                       variant="primary"
-                      onClick={() => openPreview(previewTarget)}
-                      disabled={!canPreviewHls(previewTarget)}
+                      onClick={() =>
+                        openMonitor({
+                          streamKey: input.streamKey,
+                          gatewayApp: appName,
+                          label: input.name,
+                          status: activeSession?.status ?? 'publishing',
+                        })
+                      }
+                      disabled={!isPublishing}
                     >
                       <span className="inline-flex items-center gap-2">
                         <Play size={16} className="fill-current" aria-hidden />
                         Play
                       </span>
                     </Button>
-                    {isPublishing && (
-                      <Button
-                        variant="secondary"
-                        onClick={() =>
-                          openMonitor({
-                            streamKey: input.streamKey,
-                            gatewayApp: appName,
-                            label: input.name,
-                            status: activeSession!.status,
-                          })
-                        }
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <Zap size={16} aria-hidden />
-                          Monitor
-                        </span>
-                      </Button>
-                    )}
                     {!isPublishing && (
                       <p className="text-xs hf-muted w-full">
-                        Start publishing to this ingest URL to preview playback.
+                        Start publishing to this ingest URL to play the stream here.
                       </p>
                     )}
                   </div>
@@ -475,7 +460,7 @@ const StreamKeySettingsPage: React.FC = () => {
                                       status: session.status,
                                     }}
                                     onPreview={() =>
-                                      openPreview({
+                                      openMonitor({
                                         streamKey: input.streamKey,
                                         gatewayApp: session.gatewayApp ?? appName,
                                         label: input.name,
