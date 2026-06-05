@@ -235,6 +235,47 @@ async function assertOperatorPlaybackTarget(ctx: AppContext, app: string, stream
   await resolvePlaybackOutput(ctx, app, stream);
 }
 
+/** Partner/embed HLS proxy — playback token policy, not operator JWT. */
+function registerPublicLiveMediaRoute(router: Router, ctx: AppContext) {
+  router.get(
+    '/live/:app/:resource(*)',
+    asyncHandler(async (req, res) => {
+      const app = String(req.params.app ?? '').replace(/^\/+|\/+$/g, '');
+      const resource = String(req.params.resource ?? '').replace(/^\/+/, '');
+      if (!app || !resource) {
+        throw new NotFoundError('Playback target not found');
+      }
+
+      const output = await findPlaybackOutput(ctx, app, resource);
+      if (output) {
+        await enforcePlaybackPolicy(ctx, app, output.gatewayStreamName, req);
+      } else {
+        const streamFromFile = (resource.split('/').pop() ?? resource).replace(/\.(m3u8|flv|ts)$/i, '');
+        const input = await ctx.repos.inputs.findByAppAndStreamKey(
+          ctx.organizationId,
+          app,
+          streamFromFile
+        );
+        if (!input?.enabled) {
+          throw new NotFoundError('Playback target not found');
+        }
+      }
+
+      if (isDirectBrowserNavigation(req)) {
+        throw new HttpError(403, 'Direct browser navigation to protected media is disabled');
+      }
+
+      const token = extractPlaybackToken(req) ?? undefined;
+      await proxySrsMediaToResponse(`${app}/${resource}`, res, {
+        rewriteM3u8Prefix: '/api/playback/live',
+        rewritePlaylist: resource.endsWith('.m3u8')
+          ? (body) => rewritePlaylist(body, app, token)
+          : undefined,
+      });
+    })
+  );
+}
+
 /** Public routes for /embed (no operator JWT). Playback tokens may still be issued. */
 export function createPublicPlaybackRouter(ctx: AppContext): Router {
   const router = Router();
@@ -268,6 +309,8 @@ export function createPublicPlaybackRouter(ctx: AppContext): Router {
       });
     })
   );
+
+  registerPublicLiveMediaRoute(router, ctx);
 
   return router;
 }
@@ -352,44 +395,6 @@ export function createPlaybackRouter(ctx: AppContext): Router {
         hlsUrl: appendTokenToPath(hlsPath, token),
         flvUrl: appendTokenToPath(flvPath, token),
         embedUrl,
-      });
-    })
-  );
-
-  router.get(
-    '/live/:app/:resource(*)',
-    asyncHandler(async (req, res) => {
-      const app = String(req.params.app ?? '').replace(/^\/+|\/+$/g, '');
-      const resource = String(req.params.resource ?? '').replace(/^\/+/, '');
-      if (!app || !resource) {
-        throw new NotFoundError('Playback target not found');
-      }
-
-      const output = await findPlaybackOutput(ctx, app, resource);
-      if (output) {
-        await enforcePlaybackPolicy(ctx, app, output.gatewayStreamName, req);
-      } else {
-        const streamFromFile = (resource.split('/').pop() ?? resource).replace(/\.(m3u8|flv|ts)$/i, '');
-        const input = await ctx.repos.inputs.findByAppAndStreamKey(
-          ctx.organizationId,
-          app,
-          streamFromFile
-        );
-        if (!input?.enabled) {
-          throw new NotFoundError('Playback target not found');
-        }
-      }
-
-      if (isDirectBrowserNavigation(req)) {
-        throw new HttpError(403, 'Direct browser navigation to protected media is disabled');
-      }
-
-      const token = extractPlaybackToken(req) ?? undefined;
-      await proxySrsMediaToResponse(`${app}/${resource}`, res, {
-        rewriteM3u8Prefix: '/api/playback/live',
-        rewritePlaylist: resource.endsWith('.m3u8')
-          ? (body) => rewritePlaylist(body, app, token)
-          : undefined,
       });
     })
   );
