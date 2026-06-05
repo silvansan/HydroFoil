@@ -17,19 +17,38 @@ function iceServersFromEnv(): RTCIceServer[] {
     .map((url: string) => ({ urls: url }));
 }
 
-/** Resolve SRS Location header for WHEP session teardown (avoid wrong /whip/ paths). */
-function resolveWhepSessionUrl(location: string, _whepEndpoint: string): string {
+/** Resolve SRS Location header for WHEP session teardown (must use /srs-api proxy path). */
+function resolveWhepSessionUrl(location: string, whepEndpoint: string): string {
   const normalized = location.replace(/\/whip\//gi, '/whep/');
-  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
-    return normalized;
-  }
   const apiBase = (import.meta.env.VITE_SRS_API_BASE ?? '/srs-api').replace(/\/$/, '');
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    try {
+      const url = new URL(normalized);
+      if (url.pathname.startsWith('/rtc/') && !url.pathname.startsWith(`${apiBase}/`)) {
+        return `${origin}${apiBase}${url.pathname}${url.search}`;
+      }
+    } catch {
+      return normalized;
+    }
+    return normalized;
+  }
+
   const path = normalized.startsWith('/') ? normalized : `/${normalized}`;
-  if (path.startsWith(apiBase) || path.startsWith('/rtc/')) {
+  if (path.startsWith(`${apiBase}/`)) {
     return `${origin}${path}`;
   }
-  return `${origin}${apiBase}${path}`;
+  if (path.startsWith('/rtc/')) {
+    return `${origin}${apiBase}${path}`;
+  }
+
+  try {
+    return new URL(path, whepEndpoint.startsWith('http') ? whepEndpoint : `${origin}${whepEndpoint}`)
+      .href;
+  } catch {
+    return `${origin}${apiBase}${path}`;
+  }
 }
 
 function waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
@@ -58,6 +77,8 @@ export const WhepPlayer: React.FC<WhepPlayerProps> = ({
 }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const onErrorRef = React.useRef(onError);
+  onErrorRef.current = onError;
 
   React.useEffect(() => {
     const video = videoRef.current;
@@ -70,7 +91,7 @@ export const WhepPlayer: React.FC<WhepPlayerProps> = ({
     const fail = (message: string) => {
       if (cancelled) return;
       setError(message);
-      onError?.(message);
+      onErrorRef.current?.(message);
     };
 
     (async () => {
@@ -115,13 +136,14 @@ export const WhepPlayer: React.FC<WhepPlayerProps> = ({
 
     return () => {
       cancelled = true;
-      if (sessionUrl) {
-        fetch(sessionUrl, { method: 'DELETE' }).catch(() => undefined);
+      const teardownUrl = sessionUrl;
+      if (teardownUrl) {
+        fetch(teardownUrl, { method: 'DELETE' }).catch(() => undefined);
       }
       pc?.close();
       video.srcObject = null;
     };
-  }, [endpoint, autoPlay, onError]);
+  }, [endpoint, autoPlay]);
 
   return (
     <div className="relative">

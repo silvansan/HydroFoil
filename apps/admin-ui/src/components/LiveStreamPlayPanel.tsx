@@ -40,6 +40,11 @@ export const LiveStreamPlayPanel: React.FC<LiveStreamPlayPanelProps> = ({
   const rtmpPlay = playback.resolved?.rtmpPlayUrl ?? rtmpMonitorUrl(streamKey, gatewayApp);
   const showPlayer = isPublishing || playback.playable || playback.active;
 
+  const handleWebrtcError = React.useCallback(() => {
+    setWebrtcFailed(true);
+    setMode('flv');
+  }, []);
+
   if (!showPlayer) {
     return (
       <p className="rounded-lg border border-dashed border-slate-600 bg-slate-950/50 p-6 text-center text-sm text-slate-400">
@@ -84,15 +89,7 @@ export const LiveStreamPlayPanel: React.FC<LiveStreamPlayPanelProps> = ({
       )}
 
       {activeMode === 'webrtc' ? (
-        <WhepPlayer
-          key={urls.whep}
-          endpoint={urls.whep}
-          autoPlay
-          onError={() => {
-            setWebrtcFailed(true);
-            setMode('flv');
-          }}
-        />
+        <WhepPlayer endpoint={urls.whep} autoPlay onError={handleWebrtcError} />
       ) : (
         <RtmpMonitorPlayer
           streamKey={streamKey}
