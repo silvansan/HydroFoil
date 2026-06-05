@@ -238,17 +238,18 @@ export function createInputsRouter(ctx: AppContext): Router {
         const outputIds = [
           ...new Set(routes.flatMap((route: { outputIds: string[] }) => route.outputIds.map(String))),
         ];
-        const policyId =
-          parsed.data.domainBlockId === null ? undefined : parsed.data.domainBlockId;
-        if (policyId) {
-          const block = await ctx.repos.domainBlocks.findById(ctx.organizationId, policyId);
+        if (parsed.data.domainBlockId) {
+          const block = await ctx.repos.domainBlocks.findById(
+            ctx.organizationId,
+            parsed.data.domainBlockId
+          );
           if (!block) {
             throw new BadRequestError('Privacy policy not found');
           }
         }
         for (const outputId of outputIds) {
           await ctx.repos.outputs.update(ctx.organizationId, String(outputId), {
-            domainBlockId: policyId,
+            domainBlockId: parsed.data.domainBlockId,
           });
         }
       }

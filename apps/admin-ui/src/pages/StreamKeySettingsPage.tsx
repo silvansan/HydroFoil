@@ -94,8 +94,10 @@ const StreamKeySettingsPage: React.FC = () => {
       setForm((current) => ({
         ...current,
         domainBlockId: share.domainBlockId ?? '',
-        privacyPreset: presetFromDomainBlock(block ?? undefined),
-        allowedDomains: (block?.allowedDomains ?? []).join('\n'),
+        privacyPreset: share.domainBlockId
+          ? presetFromDomainBlock(block ?? undefined)
+          : 'public',
+        allowedDomains: share.domainBlockId ? (block?.allowedDomains ?? []).join('\n') : '',
         limitDomains: Boolean(
           block?.playbackAccessPolicy === 'token-required' && (block.allowedDomains?.length ?? 0) > 0
         ),
@@ -190,6 +192,15 @@ const StreamKeySettingsPage: React.FC = () => {
         audioFeedProfileIds: form.audioFeedProfileIds,
         domainBlockId,
       });
+      if (form.privacyPreset === 'public') {
+        setForm((current) => ({
+          ...current,
+          domainBlockId: '',
+          privacyPreset: 'public',
+          allowedDomains: '',
+          limitDomains: false,
+        }));
+      }
       await load();
       reloadPlaybackShare();
       notify('Stream key saved');
