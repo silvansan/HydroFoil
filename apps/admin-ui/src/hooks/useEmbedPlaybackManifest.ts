@@ -7,6 +7,8 @@ export interface EmbedPlaybackManifest {
   playable: boolean;
   app: string;
   stream: string;
+  playApp?: string;
+  playStream?: string;
   playerHlsUrl: string;
   embedUrl: string;
   playbackAccessPolicy: DomainBlock['playbackAccessPolicy'];

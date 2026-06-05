@@ -1,7 +1,7 @@
-import type { Application, Input } from '@hydrofoil/shared-types';
+import type { Application, Input, Output } from '@hydrofoil/shared-types';
 
 import type { AppContext } from '../context';
-import { buildRtmpRouteTarget, watchOutputName, watchRouteName } from './playback-target';
+import { buildHlsRouteTarget, buildRtmpRouteTarget, watchOutputName, watchRouteName } from './playback-target';
 
 export interface ProvisionedPlayback {
   outputId: string;
@@ -15,7 +15,7 @@ export async function provisionDefaultInputPlayback(
   application: Application
 ): Promise<ProvisionedPlayback> {
   const appName = application.appName;
-  const output = await ctx.repos.outputs.create(ctx.organizationId, {
+  const watchOutput = await ctx.repos.outputs.create(ctx.organizationId, {
     name: watchOutputName(appName, input.streamKey),
     routeTarget: buildRtmpRouteTarget(appName, input.streamKey),
     playbackProtocol: 'rtmp',
@@ -25,14 +25,58 @@ export async function provisionDefaultInputPlayback(
     isPublic: true,
   });
 
+  const hlsOutput = await ctx.repos.outputs.create(ctx.organizationId, {
+    name: `HLS: ${appName}/${input.streamKey}`,
+    routeTarget: buildHlsRouteTarget(appName, input.streamKey),
+    playbackProtocol: 'hls',
+    gatewayAppName: appName,
+    gatewayStreamName: input.streamKey,
+    enabled: true,
+    isPublic: true,
+  });
+
   const route = await ctx.repos.routes.create(ctx.organizationId, {
     inputId: input.id,
     name: watchRouteName(appName, input.streamKey),
-    outputIds: [output.id],
+    outputIds: [watchOutput.id, hlsOutput.id],
     enabled: true,
   });
 
-  return { outputId: output.id, routeId: route.id };
+  return { outputId: hlsOutput.id, routeId: route.id };
+}
+
+/** Backfill HLS web output for stream keys created before dual watch+HLS provisioning. */
+export async function ensureInputHlsOutput(
+  ctx: Pick<AppContext, 'repos' | 'organizationId'>,
+  input: Input,
+  application: Application,
+  routes: Array<{ id: unknown; outputIds: string[] }>,
+  linkedOutputs: Output[]
+): Promise<Output | null> {
+  const existing = linkedOutputs.find(
+    (output) => output.enabled && output.playbackProtocol === 'hls'
+  ) as Output | undefined;
+  if (existing) return existing;
+
+  const appName = application.appName;
+  const hlsOutput = await ctx.repos.outputs.create(ctx.organizationId, {
+    name: `HLS: ${appName}/${input.streamKey}`,
+    routeTarget: buildHlsRouteTarget(appName, input.streamKey),
+    playbackProtocol: 'hls',
+    gatewayAppName: appName,
+    gatewayStreamName: input.streamKey,
+    enabled: true,
+    isPublic: true,
+  });
+
+  const route = routes[0];
+  if (route) {
+    await ctx.repos.routes.update(ctx.organizationId, String(route.id), {
+      outputIds: [...route.outputIds.map(String), String(hlsOutput.id)],
+    });
+  }
+
+  return hlsOutput as Output;
 }
 
 /** Removes auto-linked outputs after routes are gone (call before or after input delete). */

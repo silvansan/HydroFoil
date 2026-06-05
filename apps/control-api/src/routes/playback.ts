@@ -249,13 +249,14 @@ export function createPublicPlaybackRouter(ctx: AppContext): Router {
       }
 
       const share = await buildPlaybackShareByIngest(ctx, app, stream, req);
-      const resolved = await resolveLivePlayback(share.app, share.stream, { probe: false });
 
       res.json({
-        active: resolved.active,
-        playable: resolved.active,
-        app: share.app,
-        stream: share.stream,
+        active: share.active,
+        playable: share.hlsPlayable,
+        app: share.ingestApp,
+        stream: share.ingestStream,
+        playApp: share.app,
+        playStream: share.stream,
         playerHlsUrl: share.hlsUrl,
         embedUrl: share.embedUrl,
         iframeEmbedCode: share.iframeEmbedCode,

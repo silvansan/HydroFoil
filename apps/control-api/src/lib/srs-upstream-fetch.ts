@@ -10,17 +10,27 @@ import {
 
 const SRS_BASE = () => config.srsPlaybackBaseUrl.replace(/\/$/, '');
 
+function publicHostnames(): string[] {
+  const hosts = new Set<string>();
+  for (const raw of [config.publicAppUrl, config.srsRtmpForwardBase]) {
+    try {
+      const host = new URL(raw).hostname;
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
+        hosts.add(host);
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return [...hosts];
+}
+
 function vhostQuerySuffixes(vhost: string): string[] {
   const suffixes = new Set<string>(['', `?vhost=${encodeURIComponent(vhost)}`]);
   if (vhost !== 'localhost') suffixes.add('?vhost=localhost');
   if (vhost !== '__defaultVhost__') suffixes.add('?vhost=__defaultVhost__');
-  try {
-    const host = new URL(config.publicAppUrl).hostname;
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      suffixes.add(`?vhost=${encodeURIComponent(host)}`);
-    }
-  } catch {
-    // ignore
+  for (const host of publicHostnames()) {
+    suffixes.add(`?vhost=${encodeURIComponent(host)}`);
   }
   return [...suffixes];
 }

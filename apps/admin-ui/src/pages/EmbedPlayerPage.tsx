@@ -78,6 +78,22 @@ const EmbedPlayerPage: React.FC = () => {
     );
   }
 
+  if (
+    isLive &&
+    manifest.manifest?.active &&
+    !manifest.manifest.playable &&
+    !manifest.loading
+  ) {
+    return (
+      <div style={centeredStyle}>
+        <p style={{ color: '#94a3b8', maxWidth: '28rem', textAlign: 'center' }}>
+          Publisher is connected, but HLS is not ready yet. Start publishing from your encoder
+          and wait a few seconds, or add an HLS output on this stream key in HydroFoil.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -90,7 +106,7 @@ const EmbedPlayerPage: React.FC = () => {
       <HydroFoilPlayer
         src={src}
         title={title}
-        isLive={isLive && (token ? true : Boolean(manifest.manifest?.playable))}
+        isLive={isLive && Boolean(manifest.manifest?.playable)}
         playbackMode={isLive ? 'live-hls' : 'vod-hls'}
         autoPlay
         muted={false}

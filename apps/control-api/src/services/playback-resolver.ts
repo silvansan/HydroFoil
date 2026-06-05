@@ -27,7 +27,7 @@ export interface ResolvedLivePlayback {
   protectedFlv: string;
 }
 
-function normalizeApp(app: string) {
+export function normalizeApp(app: string) {
   return app.replace(/^\/+|\/+$/g, '') || 'live';
 }
 
