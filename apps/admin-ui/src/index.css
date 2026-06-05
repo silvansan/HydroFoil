@@ -207,6 +207,23 @@ html {
     color: var(--hf-brand-500);
   }
 
+  .hf-embed-panel {
+    @apply rounded-xl border;
+    border-color: color-mix(in srgb, var(--hf-border) 70%, transparent);
+    background-color: color-mix(in srgb, var(--hf-panel) 92%, transparent);
+  }
+
+  :root[data-theme='light'] .hf-embed-panel {
+    background-color: color-mix(in srgb, var(--hf-brand-600) 3%, var(--hf-panel));
+  }
+
+  .hf-code-snippet {
+    @apply rounded-lg border p-2 font-mono text-[11px] leading-relaxed;
+    border-color: color-mix(in srgb, var(--hf-border) 65%, transparent);
+    background-color: var(--hf-field);
+    color: var(--hf-text-strong);
+  }
+
   .hf-policy-section {
     @apply rounded-xl border p-4;
     border-color: color-mix(in srgb, var(--hf-border) 70%, transparent);

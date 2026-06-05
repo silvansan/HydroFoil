@@ -6,6 +6,7 @@ import type { AppContext } from '../context';
 import { config } from '../config';
 import { NotFoundError } from '../errors';
 import { absoluteUrl, appendTokenToPath } from '../lib/absolute-url';
+import { resolvePlaybackExpirySeconds } from '../lib/playback-expiry';
 import { buildScriptEmbedCode } from '../lib/script-embed';
 import { PlaybackTokenService } from './playback-token';
 import { resolveLivePlayback } from './playback-resolver';
@@ -126,7 +127,7 @@ export async function buildInputPlaybackShare(
 
   const needsToken = policyNeedsToken(effectiveBlock);
   const protectedPaths = usesProtectedPlayback(effectiveBlock);
-  const expiresInSeconds = config.playbackTokenTtlSeconds;
+  const expiresInSeconds = needsToken ? resolvePlaybackExpirySeconds(req) : config.playbackTokenTtlSeconds;
 
   let token: string | undefined;
   if (needsToken) {

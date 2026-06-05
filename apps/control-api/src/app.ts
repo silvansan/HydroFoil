@@ -38,6 +38,8 @@ export function createApp(ctx: AppContext) {
   const app = express();
   const logger = pino();
 
+  app.set('trust proxy', true);
+
   app.use(cors());
   app.use(bodyParser.json());
   app.use(

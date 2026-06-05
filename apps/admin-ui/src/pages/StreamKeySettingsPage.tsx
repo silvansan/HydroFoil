@@ -565,6 +565,7 @@ const StreamKeySettingsPage: React.FC = () => {
                   loading={playbackShareLoading}
                   error={playbackShareError}
                   onCopied={notify}
+                  onRegenerate={(options) => reloadPlaybackShare(options) ?? Promise.resolve()}
                 />
               </Card>
             </div>

@@ -544,8 +544,20 @@ export const api = {
   listInputSessions: (inputId: string) =>
     request<Paginated<LiveSession>>(`/api/inputs/${inputId}/sessions?pageSize=100`),
   getInput: (id: string) => request<Input>(`/api/inputs/${id}`),
-  getInputPlaybackUrl: (inputId: string) =>
-    request<InputPlaybackShare>(`/api/inputs/${inputId}/playback-url`),
+  getInputPlaybackUrl: (
+    inputId: string,
+    options?: { expiresAt?: string; expiresInSeconds?: number }
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.expiresAt) params.set('expiresAt', options.expiresAt);
+    if (options?.expiresInSeconds) {
+      params.set('expiresInSeconds', String(options.expiresInSeconds));
+    }
+    const query = params.toString();
+    return request<InputPlaybackShare>(
+      `/api/inputs/${inputId}/playback-url${query ? `?${query}` : ''}`
+    );
+  },
   getLiveSessionDetail: (id: string) =>
     request<{
       session: LiveSession;
