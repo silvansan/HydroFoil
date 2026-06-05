@@ -4,7 +4,10 @@ import { ArrowLeft, Play } from 'lucide-react';
 import { Card, PageHeader, TextInput, Button } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
-import type { Input, LiveSession, StreamProfile } from '../api/types';
+import type { DomainBlock, Input, LiveSession, StreamProfile } from '../api/types';
+import { InputPlaybackShareCard } from '../components/InputPlaybackShareCard';
+import { useInputPlaybackShare } from '../hooks/useInputPlaybackShare';
+import { PLAYBACK_ACCESS_OPTIONS } from '../lib/privacy-policy';
 import { formatStreamProfileOption } from '../lib/stream-profile';
 import { Alert } from '../components/Alert';
 import { CopyableUrl } from '../components/CopyableUrl';
@@ -32,11 +35,19 @@ const StreamKeySettingsPage: React.FC = () => {
     recordingPolicyIds: [] as string[],
     streamProfileIds: [] as string[],
     audioFeedProfileIds: [] as string[],
+    domainBlockId: '' as string,
   });
   const [policies, setPolicies] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [domainBlocks, setDomainBlocks] = React.useState<DomainBlock[]>([]);
   const [streamProfiles, setStreamProfiles] = React.useState<StreamProfile[]>([]);
   const [audioFeeds, setAudioFeeds] = React.useState<Array<{ id: string; name: string }>>([]);
   const { openMonitor, monitorModal } = useStreamMonitorModal();
+  const {
+    share: playbackShare,
+    loading: playbackShareLoading,
+    error: playbackShareError,
+    reload: reloadPlaybackShare,
+  } = useInputPlaybackShare(input?.id);
 
   const appName = input?.application?.appName ?? 'live';
 
@@ -56,6 +67,15 @@ const StreamKeySettingsPage: React.FC = () => {
       audioFeedProfileIds: inputRes.audioFeedProfileIds ?? (inputRes.audioFeedProfileId ? [inputRes.audioFeedProfileId] : []),
     });
     setSessions(sessionsRes.items);
+    try {
+      const share = await api.getInputPlaybackUrl(inputId);
+      setForm((current) => ({
+        ...current,
+        domainBlockId: share.domainBlockId ?? '',
+      }));
+    } catch {
+      /* playback-url optional during load */
+    }
   }, [inputId]);
 
   React.useEffect(() => {
@@ -63,7 +83,9 @@ const StreamKeySettingsPage: React.FC = () => {
       api.listRecordingPolicies('attach'),
       api.listStreamProfiles(),
       api.listAudioFeedProfiles(),
-    ]).then(([policyRes, streamRes, audioRes]) => {
+      api.listDomainBlocks(),
+    ]).then(([policyRes, streamRes, audioRes, domainRes]) => {
+      setDomainBlocks(domainRes.items);
       setPolicies(
         (policyRes.items as Array<{ id: string; name: string }>).map((p) => ({
           id: p.id,
@@ -100,8 +122,10 @@ const StreamKeySettingsPage: React.FC = () => {
         recordingPolicyIds: form.recordingPolicyIds,
         streamProfileIds: form.streamProfileIds,
         audioFeedProfileIds: form.audioFeedProfileIds,
+        domainBlockId: form.domainBlockId || null,
       });
       await load();
+      reloadPlaybackShare();
       notify('Stream key saved');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save');
@@ -186,11 +210,12 @@ const StreamKeySettingsPage: React.FC = () => {
         action={
           input ? (
             <StreamMediaActions
+              inputId={input.id}
               target={{
                 streamKey: input.streamKey,
                 gatewayApp: appName,
                 label: input.name,
-                status: activeSession?.status,
+                status: isPublishing ? 'publishing' : activeSession?.status,
               }}
               onPreview={() =>
                 openMonitor({
@@ -390,6 +415,37 @@ const StreamKeySettingsPage: React.FC = () => {
                   audioFeeds,
                   'audioFeedProfileIds'
                 )}
+                <div className="rounded-lg border border-slate-700/70 bg-slate-950/30 p-3">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-slate-200">Privacy / playback access</h3>
+                    <p className="text-xs hf-muted">
+                      Applies to all playback outputs on this stream key. Signed and domain-restricted
+                      links appear under Web playback after you save.
+                    </p>
+                  </div>
+                  <select
+                    className="hf-select w-full"
+                    value={form.domainBlockId}
+                    onChange={(e) =>
+                      setForm((current) => ({ ...current, domainBlockId: e.target.value }))
+                    }
+                  >
+                    <option value="">Public — no restrictions</option>
+                    {domainBlocks.map((block) => (
+                      <option key={block.id} value={block.id}>
+                        {block.name} (
+                        {PLAYBACK_ACCESS_OPTIONS.find((o) => o.value === block.playbackAccessPolicy)
+                          ?.shortLabel ?? block.playbackAccessPolicy}
+                        )
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs hf-muted">
+                    <Link to="/domain-blocks" className="text-brand-400 hover:underline">
+                      Manage privacy policies
+                    </Link>
+                  </p>
+                </div>
                 <p className="text-xs hf-muted">
                   Manage templates under{' '}
                   <Link to="/recording-policies" className="text-brand-400 hover:underline">
@@ -403,6 +459,23 @@ const StreamKeySettingsPage: React.FC = () => {
                   </Link>
                   .
                 </p>
+              </Card>
+
+              <Card className="p-6 space-y-4 lg:col-span-2">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-100">Web playback</h2>
+                  <p className="mt-1 text-sm hf-muted">
+                    HLS and embed links for your website — includes signed tokens when a privacy
+                    policy requires them. Quality options appear in the player when ABR transcode
+                    renditions are live.
+                  </p>
+                </div>
+                <InputPlaybackShareCard
+                  share={playbackShare}
+                  loading={playbackShareLoading}
+                  error={playbackShareError}
+                  onCopied={notify}
+                />
               </Card>
             </div>
           )}
@@ -453,11 +526,12 @@ const StreamKeySettingsPage: React.FC = () => {
                               <div className="flex items-center justify-end gap-1">
                                 {publishing && (
                                   <StreamMediaActions
+                                    inputId={input.id}
                                     target={{
                                       streamKey: input.streamKey,
                                       gatewayApp: session.gatewayApp ?? appName,
                                       label: input.name,
-                                      status: session.status,
+                                      status: 'publishing',
                                     }}
                                     onPreview={() =>
                                       openMonitor({

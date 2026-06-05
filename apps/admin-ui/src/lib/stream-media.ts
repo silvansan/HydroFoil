@@ -1,4 +1,4 @@
-import type { Input, RestreamDestination } from '../api/types';
+import type { Input, InputPlaybackShare, RestreamDestination } from '../api/types';
 import { absoluteHlsUrl, buildHlsEmbedCode, buildLiveIframeEmbedCode } from './playback';
 
 export interface StreamMediaTarget {
@@ -8,6 +8,8 @@ export interface StreamMediaTarget {
   status?: string;
   /** Signed or public VOD URL when live HLS is not applicable (recordings). */
   playbackUrl?: string;
+  /** Policy-aware live URLs from GET /api/inputs/:id/playback-url. */
+  playbackShare?: InputPlaybackShare | null;
 }
 
 export function canPreviewHls(target: StreamMediaTarget): boolean {
@@ -16,11 +18,19 @@ export function canPreviewHls(target: StreamMediaTarget): boolean {
 }
 
 export function hlsUrlForTarget(target: StreamMediaTarget): string {
+  if (target.playbackShare?.hlsUrl) return target.playbackShare.hlsUrl;
   if (target.playbackUrl) return target.playbackUrl;
   return absoluteHlsUrl(target.streamKey, target.gatewayApp);
 }
 
 export function embedCodeForTarget(target: StreamMediaTarget): string {
+  if (target.playbackShare) {
+    return buildLiveIframeEmbedCode(
+      target.playbackShare.stream,
+      target.playbackShare.app,
+      target.playbackShare.token
+    );
+  }
   if (target.playbackUrl) {
     return buildHlsEmbedCode(target.playbackUrl);
   }

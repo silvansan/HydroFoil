@@ -6,6 +6,7 @@ import type {
   DomainBlock,
   DvrWatchlistEntry,
   Input,
+  InputPlaybackShare,
   LivePlaybackInfo,
   LivePlaybackResolve,
   LiveSession,
@@ -177,6 +178,7 @@ export const api = {
       recordingPolicyIds?: string[];
       streamProfileIds?: string[];
       audioFeedProfileIds?: string[];
+      domainBlockId?: string | null;
     }
   ) =>
     request<Input>(`/api/inputs/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -542,6 +544,8 @@ export const api = {
   listInputSessions: (inputId: string) =>
     request<Paginated<LiveSession>>(`/api/inputs/${inputId}/sessions?pageSize=100`),
   getInput: (id: string) => request<Input>(`/api/inputs/${id}`),
+  getInputPlaybackUrl: (inputId: string) =>
+    request<InputPlaybackShare>(`/api/inputs/${inputId}/playback-url`),
   getLiveSessionDetail: (id: string) =>
     request<{
       session: LiveSession;

@@ -30,6 +30,7 @@ export const StreamKeyActions: React.FC<StreamKeyActionsProps> = ({
 }) => (
   <>
     <StreamMediaActions
+      inputId={input.id}
       target={{
         streamKey: input.streamKey,
         gatewayApp: appName,

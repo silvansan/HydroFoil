@@ -38,6 +38,28 @@ const badgeVod: React.CSSProperties = {
   background: '#0891b2',
 };
 
+const qualitySelectStyle: React.CSSProperties = {
+  fontSize: '0.7rem',
+  color: '#e2e8f0',
+  background: 'rgba(15, 23, 42, 0.9)',
+  border: '1px solid rgba(45, 212, 191, 0.25)',
+  borderRadius: '0.25rem',
+  padding: '0.2rem 0.35rem',
+  maxWidth: '8rem',
+};
+
+type QualityOption = { index: number; label: string };
+
+function formatLevelLabel(height: number, bitrate: number): string {
+  if (height >= 1080) return '1080p';
+  if (height >= 720) return '720p';
+  if (height >= 480) return '480p';
+  if (height >= 360) return '360p';
+  if (height > 0) return `${height}p`;
+  if (bitrate > 0) return `${Math.round(bitrate / 1000)} kbps`;
+  return 'Quality';
+}
+
 export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   src,
   title,
@@ -48,7 +70,10 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   muted = true,
 }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
+  const hlsRef = React.useRef<Hls | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [qualityOptions, setQualityOptions] = React.useState<QualityOption[]>([]);
+  const [selectedQuality, setSelectedQuality] = React.useState(-1);
   const showLive = isLive ?? playbackMode === 'live-hls';
 
   React.useEffect(() => {
@@ -56,11 +81,29 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     if (!video || !src) return;
 
     setError(null);
+    setQualityOptions([]);
+    setSelectedQuality(-1);
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
 
     const onVideoError = () => {
       setError(showLive ? 'Stream offline or unavailable.' : 'Media failed to load.');
     };
     video.addEventListener('error', onVideoError);
+
+    const applyQualityOptions = (hls: Hls) => {
+      const levels = hls.levels ?? [];
+      if (levels.length <= 1) {
+        setQualityOptions([]);
+        return;
+      }
+      const options: QualityOption[] = levels.map((level, index) => ({
+        index,
+        label: formatLevelLabel(level.height ?? 0, level.bitrate ?? 0),
+      }));
+      setQualityOptions(options);
+      setSelectedQuality(hls.currentLevel >= 0 ? hls.currentLevel : -1);
+    };
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = src;
@@ -77,13 +120,20 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
       enableWorker: true,
       lowLatencyMode: playbackMode === 'live-hls',
     });
+    hlsRef.current = hls;
     hls.loadSource(src);
     hls.attachMedia(video);
     if (autoPlay) {
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        applyQualityOptions(hls);
         video.play().catch(() => undefined);
       });
+    } else {
+      hls.on(Hls.Events.MANIFEST_PARSED, () => applyQualityOptions(hls));
     }
+    hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+      setSelectedQuality(data.level);
+    });
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal) return;
       const detail =
@@ -98,12 +148,21 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     return () => {
       video.removeEventListener('error', onVideoError);
       hls.destroy();
+      hlsRef.current = null;
     };
   }, [src, autoPlay, playbackMode, showLive]);
 
+  const onQualityChange = (value: string) => {
+    const level = Number(value);
+    setSelectedQuality(level);
+    const hls = hlsRef.current;
+    if (!hls) return;
+    hls.currentLevel = level;
+  };
+
   return (
     <div className={`hydrofoil-player ${className}`.trim()} style={shellStyle}>
-      {(title || showLive) && (
+      {(title || showLive || qualityOptions.length > 0) && (
         <div style={chromeStyle}>
           <span
             style={{
@@ -113,11 +172,30 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
+              flex: 1,
+              minWidth: 0,
             }}
           >
             {title ?? 'HydroFoil'}
           </span>
-          <span style={showLive ? badgeLive : badgeVod}>{showLive ? 'Live' : 'VOD'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            {qualityOptions.length > 0 && (
+              <select
+                aria-label="Video quality"
+                value={String(selectedQuality)}
+                onChange={(e) => onQualityChange(e.target.value)}
+                style={qualitySelectStyle}
+              >
+                <option value="-1">Auto</option>
+                {qualityOptions.map((option) => (
+                  <option key={option.index} value={String(option.index)}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span style={showLive ? badgeLive : badgeVod}>{showLive ? 'Live' : 'VOD'}</span>
+          </div>
         </div>
       )}
       <video

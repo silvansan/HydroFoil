@@ -11,6 +11,7 @@ import {
   provisionDefaultInputPlayback,
   teardownInputPlayback,
 } from '../lib/provision-input-playback';
+import { buildInputPlaybackShare } from '../services/input-playback-share';
 import {
   assertApplicationAccess,
   assertInputAccess,
@@ -31,6 +32,8 @@ const createInputSchema = z.object({
   streamProfileIds: z.array(z.string().uuid()).optional(),
   recordingPolicyIds: z.array(z.string().uuid()).optional(),
   audioFeedProfileIds: z.array(z.string().uuid()).optional(),
+  /** Applies this privacy policy to all playback outputs on this stream key's routes. */
+  domainBlockId: z.union([z.string().uuid(), z.null()]).optional(),
 });
 
 const updateInputSchema = createInputSchema.partial();
@@ -66,6 +69,15 @@ export function createInputsRouter(ctx: AppContext): Router {
         applicationIds: applicationId ? undefined : (scope.applicationIds ?? undefined),
       });
       res.json(result);
+    })
+  );
+
+  router.get(
+    '/:id/playback-url',
+    asyncHandler(async (req, res) => {
+      await assertInputAccess(ctx.organizationId, req.params.id, getAccessScope(req), ctx.repos);
+      const share = await buildInputPlaybackShare(ctx, req.params.id, req);
+      res.json(share);
     })
   );
 
@@ -217,6 +229,30 @@ export function createInputsRouter(ctx: AppContext): Router {
       if (!input) {
         throw new NotFoundError('Input not found');
       }
+
+      if (parsed.data.domainBlockId !== undefined) {
+        const routes = await ctx.repos.routes.findByInputId(
+          ctx.organizationId,
+          String(input.id)
+        );
+        const outputIds = [
+          ...new Set(routes.flatMap((route: { outputIds: string[] }) => route.outputIds.map(String))),
+        ];
+        const policyId =
+          parsed.data.domainBlockId === null ? undefined : parsed.data.domainBlockId;
+        if (policyId) {
+          const block = await ctx.repos.domainBlocks.findById(ctx.organizationId, policyId);
+          if (!block) {
+            throw new BadRequestError('Privacy policy not found');
+          }
+        }
+        for (const outputId of outputIds) {
+          await ctx.repos.outputs.update(ctx.organizationId, String(outputId), {
+            domainBlockId: policyId,
+          });
+        }
+      }
+
       await afterRoutingMutation(ctx.gateway, 'input.updated', input.id);
       res.json(input);
     })

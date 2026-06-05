@@ -8,8 +8,8 @@ import { ClickableRow, RowActionsCell } from '../components/ClickableRow';
 import { StreamLiveBadge } from '../components/StreamLiveBadge';
 import { StreamMediaActions } from '../components/StreamMediaActions';
 import { useResourceList } from '../hooks/useResourceList';
-import { useStreamPreviewModal } from '../hooks/useStreamPreviewModal';
 import { useStreamMonitorModal } from '../hooks/useStreamMonitorModal';
+import { openLivePlayModal } from '../lib/live-stream-actions';
 import { formatBitrateKbps, formatUptime } from '../lib/format-uptime';
 
 function streamPath(session: LiveSession): string {
@@ -30,7 +30,6 @@ const LiveSessionsPage: React.FC = () => {
   const { items, isLoading, error, reload } = useResourceList<LiveSession>(() =>
     api.listLiveSessions({ activeOnly: true })
   );
-  const { openPreview, previewModal } = useStreamPreviewModal();
   const { openMonitor, monitorModal } = useStreamMonitorModal();
   const [rowToast, setRowToast] = React.useState<string | null>(null);
 
@@ -60,7 +59,6 @@ const LiveSessionsPage: React.FC = () => {
         </div>
       )}
 
-      {previewModal}
       {monitorModal}
 
       <Card className="overflow-hidden">
@@ -151,26 +149,25 @@ const LiveSessionsPage: React.FC = () => {
                       <RowActionsCell className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <StreamMediaActions
+                            inputId={session.inputId}
                             target={{
                               streamKey: session.streamKey,
                               gatewayApp,
                               label: session.streamKey,
-                              status: session.status,
+                              status: 'publishing',
                             }}
                             onPreview={() =>
-                              openPreview({
+                              openLivePlayModal(openMonitor, {
                                 streamKey: session.streamKey,
                                 gatewayApp,
                                 label: session.streamKey,
-                                status: session.status,
                               })
                             }
                             onMonitor={() =>
-                              openMonitor({
+                              openLivePlayModal(openMonitor, {
                                 streamKey: session.streamKey,
                                 gatewayApp,
                                 label: session.streamKey,
-                                status: session.status,
                               })
                             }
                             onNotify={rowNotify}

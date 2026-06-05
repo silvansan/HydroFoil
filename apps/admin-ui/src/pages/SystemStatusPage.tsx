@@ -429,6 +429,7 @@ const SystemStatusPage: React.FC = () => {
                         <div className="flex flex-col items-end gap-2 shrink-0">
                           <Badge variant="success">LIVE</Badge>
                           <StreamMediaActions
+                            inputId={row.inputId}
                             target={{
                               streamKey: row.streamKey,
                               gatewayApp: row.gatewayApp,

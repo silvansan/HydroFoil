@@ -255,6 +255,22 @@ export interface LivePlaybackInfo {
   embedUrl: string;
 }
 
+/** Operator share/embed URLs for a stream key (GET /api/inputs/:id/playback-url). */
+export interface InputPlaybackShare {
+  app: string;
+  stream: string;
+  playbackAccessPolicy: DomainBlock['playbackAccessPolicy'];
+  domainBlockId?: string;
+  domainBlockName?: string;
+  previewUrl: string;
+  shareUrl: string;
+  embedUrl: string;
+  hlsUrl: string;
+  token?: string;
+  expiresAt?: string;
+  expiresInSeconds?: number;
+}
+
 /** Resolved SRS playback paths for operator preview (from GET /api/playback/resolve). */
 export interface LivePlaybackResolve {
   active: boolean;
