@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeUpstreamMediaPath } from './srs-upstream-fetch';
+import { mergeUpstreamRequestQuery, normalizeUpstreamMediaPath } from './srs-upstream-fetch';
 
 describe('normalizeUpstreamMediaPath', () => {
   it('adds a leading slash for proxy-style paths', () => {
@@ -15,5 +15,16 @@ describe('normalizeUpstreamMediaPath', () => {
 
   it('leaves already-normalized paths unchanged', () => {
     expect(normalizeUpstreamMediaPath('/gtch/fr-gi2uep.m3u8')).toBe('/gtch/fr-gi2uep.m3u8');
+  });
+});
+
+describe('mergeUpstreamRequestQuery', () => {
+  it('merges hls_ctx from the client request into vhost upstream paths', () => {
+    expect(
+      mergeUpstreamRequestQuery(
+        '/gtch/fr-gi2uep.m3u8?vhost=__defaultVhost__',
+        '?hls_ctx=89qkyyz7&vhost=__defaultVhost__'
+      )
+    ).toBe('/gtch/fr-gi2uep.m3u8?vhost=__defaultVhost__&hls_ctx=89qkyyz7');
   });
 });

@@ -33,7 +33,7 @@ const EmbedPlayerPage: React.FC = () => {
       return manifest.manifest.playerHlsUrl;
     }
     return '';
-  }, [srcParam, safeStream, token, isLive, manifest.manifest?.playerHlsUrl]);
+  }, [srcParam, safeStream, token, isLive, manifest.manifest?.playerHlsUrl, manifest.manifest?.playable]);
 
   if (manifest.loading && !src) {
     return (
@@ -78,6 +78,17 @@ const EmbedPlayerPage: React.FC = () => {
     );
   }
 
+  if (isLive && manifest.manifest && !manifest.manifest.active && !manifest.loading) {
+    return (
+      <div style={centeredStyle}>
+        <p style={{ color: '#94a3b8', maxWidth: '28rem', textAlign: 'center' }}>
+          Stream is offline. Start publishing from your encoder, then this page will refresh
+          automatically.
+        </p>
+      </div>
+    );
+  }
+
   if (
     isLive &&
     manifest.manifest?.active &&
@@ -87,8 +98,8 @@ const EmbedPlayerPage: React.FC = () => {
     return (
       <div style={centeredStyle}>
         <p style={{ color: '#94a3b8', maxWidth: '28rem', textAlign: 'center' }}>
-          Publisher is connected, but HLS is not ready yet. Start publishing from your encoder
-          and wait a few seconds, or add an HLS output on this stream key in HydroFoil.
+          Publisher is connected, but HLS is not ready yet. Wait a few seconds for the first
+          segments, or check SRS ingest vhost settings on the server.
         </p>
       </div>
     );

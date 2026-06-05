@@ -86,11 +86,11 @@ export async function resolvePlayableWebHlsTarget(options: {
     });
     if (resolved.active) anyActive = true;
     const hlsPath = `/${normalizeApp(candidate.app)}/${candidate.stream.replace(/^\/+|\/+$/g, '')}.m3u8`;
-    if (await probeUpstreamMedia(hlsPath)) {
+    if ((resolved.active || anyActive) && (await probeUpstreamMedia(hlsPath))) {
       return {
         app: candidate.app,
         stream: candidate.stream,
-        active: resolved.active || anyActive,
+        active: true,
         hlsPlayable: true,
       };
     }

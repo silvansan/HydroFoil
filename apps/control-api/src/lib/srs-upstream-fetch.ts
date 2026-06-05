@@ -10,6 +10,23 @@ import {
 
 const SRS_BASE = () => config.srsPlaybackBaseUrl.replace(/\/$/, '');
 
+/** Merge SRS session query params (e.g. hls_ctx) from the client request into upstream candidates. */
+export function mergeUpstreamRequestQuery(candidate: string, requestQuery: string): string {
+  const [candidatePath, candidateSearch = ''] = candidate.split('?');
+  if (!requestQuery || requestQuery === '?') {
+    return candidate;
+  }
+  const requestParams = new URLSearchParams(
+    requestQuery.startsWith('?') ? requestQuery.slice(1) : requestQuery
+  );
+  const candidateParams = new URLSearchParams(candidateSearch);
+  for (const [key, value] of requestParams) {
+    candidateParams.set(key, value);
+  }
+  const merged = candidateParams.toString();
+  return merged ? `${candidatePath}?${merged}` : candidatePath;
+}
+
 /** Express mounted routers pass paths without a leading slash — SRS resolution requires one. */
 export function normalizeUpstreamMediaPath(pathWithQuery: string): string {
   const queryIndex = pathWithQuery.indexOf('?');
@@ -134,6 +151,7 @@ export async function fetchFromSrsUpstream(
 
   const candidates = [
     ...new Set([
+      normalizedPath,
       ...(options?.preferredPaths ?? []),
       ...resolved,
       ...srsUpstreamCandidates(pathOnly, vhost),
@@ -145,9 +163,7 @@ export async function fetchFromSrsUpstream(
   let lastBody = Buffer.alloc(0);
 
   for (const candidate of candidates) {
-    const merged = candidate.includes('?')
-      ? candidate
-      : `${candidate}${extraQuery && !candidate.includes('?') ? extraQuery : ''}`;
+    const merged = mergeUpstreamRequestQuery(candidate, extraQuery);
     const upstreamUrl = new URL(merged.replace(/^\/+/, ''), `${base}/`);
     const response = await fetch(upstreamUrl);
     lastStatus = response.status;
