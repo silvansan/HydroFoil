@@ -179,7 +179,7 @@ export async function pipeFromSrsUpstream(
   res: Response,
   options?: FetchFromSrsOptions
 ): Promise<void> {
-  const { base, pathOnly, extraQuery, candidates } = await resolveUpstreamCandidates(
+  const { base, extraQuery, candidates } = await resolveUpstreamCandidates(
     pathWithQuery,
     options
   );
