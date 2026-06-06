@@ -23,38 +23,26 @@ const EmbedPlayerPage: React.FC = () => {
   });
 
   const token = tokenParam ?? manifest.manifest?.token;
-  const preferFlv =
+  const flvSrc = manifest.manifest?.playerFlvUrl ?? '';
+  const canUseFlv =
     isLive &&
-    Boolean(manifest.manifest?.active) &&
-    !manifest.manifest?.playable &&
-    Boolean(manifest.manifest?.flvPlayable && manifest.manifest?.playerFlvUrl);
-  const src = React.useMemo(() => {
-    if (srcParam) return srcParam;
-    if (!safeStream) return '';
-    if (preferFlv && manifest.manifest?.playerFlvUrl) {
-      return manifest.manifest.playerFlvUrl;
-    }
-    if (token && manifest.manifest?.playerHlsUrl) {
-      return manifest.manifest.playerHlsUrl;
-    }
-    if (isLive && manifest.manifest?.active && manifest.manifest?.playerHlsUrl) {
-      return manifest.manifest.playerHlsUrl;
-    }
+    Boolean(manifest.manifest?.active && manifest.manifest?.flvPlayable && flvSrc);
+  const canUseHls = Boolean(manifest.manifest?.playable && manifest.manifest?.playerHlsUrl);
+  const preferFlv = canUseFlv && !canUseHls;
+
+  const hlsSrc = React.useMemo(() => {
+    if (!manifest.manifest?.playerHlsUrl) return '';
+    if (token) return manifest.manifest.playerHlsUrl;
+    if (canUseHls) return manifest.manifest.playerHlsUrl;
+    if (!isLive) return manifest.manifest.playerHlsUrl;
     return '';
-  }, [
-    srcParam,
-    safeStream,
-    token,
-    isLive,
-    preferFlv,
-    manifest.manifest?.playerHlsUrl,
-    manifest.manifest?.playerFlvUrl,
-    manifest.manifest?.playable,
-    manifest.manifest?.active,
-  ]);
+  }, [manifest.manifest?.playerHlsUrl, manifest.manifest?.active, token, canUseHls, isLive]);
+
+  const src = srcParam ?? hlsSrc;
+  const readyToPlay = Boolean(srcParam) || canUseHls || canUseFlv;
   const playbackMode = preferFlv ? 'live-flv' : isLive ? 'live-hls' : 'vod-hls';
 
-  if (manifest.loading && !src) {
+  if (manifest.loading && !readyToPlay) {
     return (
       <div style={centeredStyle}>
         <p style={{ color: '#94a3b8' }}>Loading stream…</p>
@@ -62,7 +50,7 @@ const EmbedPlayerPage: React.FC = () => {
     );
   }
 
-  if (manifest.error && !src) {
+  if (manifest.error && !readyToPlay) {
     return (
       <div style={centeredStyle}>
         <p style={{ color: '#fecaca' }}>{manifest.error}</p>
@@ -71,7 +59,7 @@ const EmbedPlayerPage: React.FC = () => {
   }
 
   if (
-    !src &&
+    !readyToPlay &&
     manifest.manifest?.requiresToken &&
     !token &&
     manifest.manifest.playbackAccessPolicy !== 'public'
@@ -86,7 +74,7 @@ const EmbedPlayerPage: React.FC = () => {
     );
   }
 
-  if (!src) {
+  if (!safeStream && !srcParam) {
     return (
       <div style={centeredStyle}>
         <p style={{ color: '#94a3b8' }}>
@@ -108,17 +96,12 @@ const EmbedPlayerPage: React.FC = () => {
     );
   }
 
-  if (
-    isLive &&
-    manifest.manifest?.active &&
-    !manifest.manifest.playable &&
-    !manifest.loading
-  ) {
+  if (isLive && manifest.manifest?.active && !canUseHls && !canUseFlv && !manifest.loading) {
     return (
       <div style={centeredStyle}>
         <p style={{ color: '#94a3b8', maxWidth: '28rem', textAlign: 'center' }}>
-          Publisher is connected, but HLS is not ready yet. Wait a few seconds for the first
-          segments, or check SRS ingest vhost settings on the server.
+          Publisher is connected, but playback is not ready yet. Wait a few seconds and refresh,
+          or check SRS ingest vhost settings on the server.
         </p>
       </div>
     );
@@ -135,7 +118,7 @@ const EmbedPlayerPage: React.FC = () => {
     >
       <HydroFoilPlayer
         src={src}
-        flvSrc={manifest.manifest?.playerFlvUrl}
+        flvSrc={flvSrc || undefined}
         title={title}
         isLive={isLive && Boolean(manifest.manifest?.active)}
         playbackMode={playbackMode}
