@@ -29,6 +29,7 @@ export interface InputPlaybackShareDto {
   shareUrl: string;
   embedUrl: string;
   hlsUrl: string;
+  flvUrl: string;
   token?: string;
   expiresAt?: string;
   expiresInSeconds?: number;
@@ -173,7 +174,11 @@ export async function buildInputPlaybackShare(
   const hlsPath = protectedPaths
     ? appendTokenToPath(playback.protectedHls, token)
     : playback.srsMediaHls;
+  const flvPath = protectedPaths
+    ? appendTokenToPath(playback.protectedFlv, token)
+    : playback.srsMediaFlv;
   const hlsUrl = absoluteUrl(req, hlsPath);
+  const flvUrl = absoluteUrl(req, flvPath);
   const embedUrl = absoluteUrl(
     req,
     `/embed?${new URLSearchParams({
@@ -209,6 +214,7 @@ export async function buildInputPlaybackShare(
     shareUrl: hlsUrl,
     embedUrl,
     hlsUrl,
+    flvUrl,
     token,
     expiresAt: token ? new Date(Date.now() + expiresInSeconds * 1000).toISOString() : undefined,
     expiresInSeconds: token ? expiresInSeconds : undefined,

@@ -113,12 +113,20 @@ export type FetchFromSrsOptions = {
   preferredPaths?: string[];
 };
 
+function isHlsMediaPlaylist(body: string): boolean {
+  return body.includes('#EXTINF:');
+}
+
 /** Probe SRS using the same upstream fallbacks as /srs-media proxy. */
 export async function probeUpstreamMedia(pathOnly: string): Promise<boolean> {
   try {
     const normalized = pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`;
     const result = await fetchFromSrsUpstream(normalized);
-    return result.status >= 200 && result.status < 300;
+    if (result.status < 200 || result.status >= 300) return false;
+    if (/\.m3u8/i.test(normalized)) {
+      return isHlsMediaPlaylist(result.body.toString('utf8'));
+    }
+    return true;
   } catch {
     return false;
   }
@@ -161,6 +169,12 @@ export async function fetchFromSrsUpstream(
   let lastStatus = 404;
   let lastContentType: string | undefined;
   let lastBody = Buffer.alloc(0);
+  let fallbackMaster: {
+    status: number;
+    contentType?: string;
+    body: Buffer;
+    resolvedPath?: string;
+  } | null = null;
 
   for (const candidate of candidates) {
     const merged = mergeUpstreamRequestQuery(candidate, extraQuery);
@@ -170,14 +184,23 @@ export async function fetchFromSrsUpstream(
     lastContentType = response.headers.get('content-type') ?? undefined;
     lastBody = Buffer.from(await response.arrayBuffer());
     if (lastStatus >= 200 && lastStatus < 300) {
-      return {
+      const payload = {
         status: lastStatus,
         contentType: lastContentType,
         body: lastBody,
         resolvedPath: merged,
       };
+      if (pathOnly.endsWith('.m3u8')) {
+        if (isHlsMediaPlaylist(lastBody.toString('utf8'))) {
+          return payload;
+        }
+        if (!fallbackMaster) fallbackMaster = payload;
+        continue;
+      }
+      return payload;
     }
   }
 
+  if (fallbackMaster) return fallbackMaster;
   return { status: lastStatus, contentType: lastContentType, body: lastBody };
 }

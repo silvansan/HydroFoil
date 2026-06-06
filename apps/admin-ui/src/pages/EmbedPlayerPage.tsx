@@ -23,17 +23,36 @@ const EmbedPlayerPage: React.FC = () => {
   });
 
   const token = tokenParam ?? manifest.manifest?.token;
+  const preferFlv =
+    isLive &&
+    Boolean(manifest.manifest?.active) &&
+    !manifest.manifest?.playable &&
+    Boolean(manifest.manifest?.flvPlayable && manifest.manifest?.playerFlvUrl);
   const src = React.useMemo(() => {
     if (srcParam) return srcParam;
     if (!safeStream) return '';
+    if (preferFlv && manifest.manifest?.playerFlvUrl) {
+      return manifest.manifest.playerFlvUrl;
+    }
     if (token && manifest.manifest?.playerHlsUrl) {
       return manifest.manifest.playerHlsUrl;
     }
-    if (isLive && manifest.manifest?.playable && manifest.manifest?.playerHlsUrl) {
+    if (isLive && manifest.manifest?.active && manifest.manifest?.playerHlsUrl) {
       return manifest.manifest.playerHlsUrl;
     }
     return '';
-  }, [srcParam, safeStream, token, isLive, manifest.manifest?.playerHlsUrl, manifest.manifest?.playable]);
+  }, [
+    srcParam,
+    safeStream,
+    token,
+    isLive,
+    preferFlv,
+    manifest.manifest?.playerHlsUrl,
+    manifest.manifest?.playerFlvUrl,
+    manifest.manifest?.playable,
+    manifest.manifest?.active,
+  ]);
+  const playbackMode = preferFlv ? 'live-flv' : isLive ? 'live-hls' : 'vod-hls';
 
   if (manifest.loading && !src) {
     return (
@@ -116,9 +135,10 @@ const EmbedPlayerPage: React.FC = () => {
     >
       <HydroFoilPlayer
         src={src}
+        flvSrc={manifest.manifest?.playerFlvUrl}
         title={title}
-        isLive={isLive && Boolean(manifest.manifest?.playable)}
-        playbackMode={isLive ? 'live-hls' : 'vod-hls'}
+        isLive={isLive && Boolean(manifest.manifest?.active)}
+        playbackMode={playbackMode}
         autoPlay
         muted={false}
       />

@@ -1,8 +1,10 @@
-export type HydroFoilPlaybackMode = 'live-hls' | 'vod-hls';
+export type HydroFoilPlaybackMode = 'live-hls' | 'live-flv' | 'vod-hls';
 
 export interface HydroFoilPlayerProps {
   /** HLS manifest or media URL */
   src: string;
+  /** HTTP-FLV fallback when live HLS is unavailable (same stream, lower latency). */
+  flvSrc?: string;
   /** Optional label shown in player chrome */
   title?: string;
   /** Show live badge (default true for live-hls) */

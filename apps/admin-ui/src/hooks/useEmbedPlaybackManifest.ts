@@ -5,11 +5,13 @@ import type { DomainBlock } from '../api/types';
 export interface EmbedPlaybackManifest {
   active: boolean;
   playable: boolean;
+  flvPlayable?: boolean;
   app: string;
   stream: string;
   playApp?: string;
   playStream?: string;
   playerHlsUrl: string;
+  playerFlvUrl?: string;
   embedUrl: string;
   playbackAccessPolicy: DomainBlock['playbackAccessPolicy'];
   requiresToken: boolean;

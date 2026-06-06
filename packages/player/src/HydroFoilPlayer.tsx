@@ -1,5 +1,6 @@
 import React from 'react';
 import Hls from 'hls.js';
+import mpegts from 'mpegts.js';
 
 import type { HydroFoilPlayerProps } from './types';
 
@@ -62,6 +63,7 @@ function formatLevelLabel(height: number, bitrate: number): string {
 
 export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   src,
+  flvSrc,
   title,
   isLive,
   playbackMode = 'live-hls',
@@ -74,11 +76,69 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   const [error, setError] = React.useState<string | null>(null);
   const [qualityOptions, setQualityOptions] = React.useState<QualityOption[]>([]);
   const [selectedQuality, setSelectedQuality] = React.useState(-1);
-  const showLive = isLive ?? playbackMode === 'live-hls';
+  const [transport, setTransport] = React.useState<'hls' | 'flv'>(
+    playbackMode === 'live-flv' ? 'flv' : 'hls'
+  );
+  const showLive = isLive ?? (playbackMode === 'live-hls' || playbackMode === 'live-flv');
+
+  React.useEffect(() => {
+    setTransport(playbackMode === 'live-flv' ? 'flv' : 'hls');
+    setError(null);
+  }, [src, flvSrc, playbackMode]);
 
   React.useEffect(() => {
     const video = videoRef.current;
-    if (!video || !src) return;
+    if (!video || transport !== 'flv' || !flvSrc) return;
+
+    setError(null);
+    setQualityOptions([]);
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+
+    if (!mpegts.isSupported()) {
+      setError('Live playback is not supported in this browser.');
+      return;
+    }
+
+    const player = mpegts.createPlayer(
+      {
+        type: 'flv',
+        url: flvSrc,
+        isLive: true,
+        hasAudio: true,
+        hasVideo: true,
+      },
+      {
+        enableWorker: true,
+        enableStashBuffer: false,
+        stashInitialSize: 128,
+        lazyLoad: false,
+      }
+    );
+
+    player.attachMediaElement(video);
+    player.load();
+    if (autoPlay) {
+      player.play().catch(() => undefined);
+    }
+
+    const onFlvError = () => {
+      setError(showLive ? 'Stream offline or unavailable.' : 'Media failed to load.');
+    };
+    player.on(mpegts.Events.ERROR, onFlvError);
+
+    return () => {
+      player.off(mpegts.Events.ERROR, onFlvError);
+      player.pause();
+      player.unload();
+      player.detachMediaElement();
+      player.destroy();
+    };
+  }, [transport, flvSrc, autoPlay, showLive]);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video || transport !== 'hls' || !src) return;
 
     setError(null);
     setQualityOptions([]);
@@ -87,6 +147,10 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     hlsRef.current = null;
 
     const onVideoError = () => {
+      if (flvSrc && showLive) {
+        setTransport('flv');
+        return;
+      }
       setError(showLive ? 'Stream offline or unavailable.' : 'Media failed to load.');
     };
     video.addEventListener('error', onVideoError);
@@ -112,6 +176,10 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     }
 
     if (!Hls.isSupported()) {
+      if (flvSrc && showLive) {
+        setTransport('flv');
+        return () => video.removeEventListener('error', onVideoError);
+      }
       setError('HLS is not supported in this browser.');
       return () => video.removeEventListener('error', onVideoError);
     }
@@ -136,6 +204,10 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     });
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal) return;
+      if (flvSrc && showLive) {
+        setTransport('flv');
+        return;
+      }
       const detail =
         data.type === Hls.ErrorTypes.NETWORK_ERROR
           ? showLive
@@ -150,7 +222,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
       hls.destroy();
       hlsRef.current = null;
     };
-  }, [src, autoPlay, playbackMode, showLive]);
+  }, [src, flvSrc, autoPlay, playbackMode, showLive, transport]);
 
   const onQualityChange = (value: string) => {
     const level = Number(value);

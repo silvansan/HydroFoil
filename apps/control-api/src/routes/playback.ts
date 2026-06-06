@@ -294,11 +294,13 @@ export function createPublicPlaybackRouter(ctx: AppContext): Router {
       res.json({
         active: share.active,
         playable: share.hlsPlayable,
+        flvPlayable: share.active,
         app: share.ingestApp,
         stream: share.ingestStream,
         playApp: share.app,
         playStream: share.stream,
         playerHlsUrl: share.hlsUrl,
+        playerFlvUrl: share.flvUrl,
         embedUrl: share.embedUrl,
         iframeEmbedCode: share.iframeEmbedCode,
         scriptEmbedCode: share.scriptEmbedCode,
