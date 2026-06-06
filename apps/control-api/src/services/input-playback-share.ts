@@ -174,9 +174,10 @@ export async function buildInputPlaybackShare(
   const hlsPath = protectedPaths
     ? appendTokenToPath(playback.protectedHls, token)
     : playback.srsMediaHls;
+  // Public FLV: direct SRS remux path (nginx → srs). /srs-media FLV proxy buffers poorly for live.
   const flvPath = protectedPaths
     ? appendTokenToPath(playback.protectedFlv, token)
-    : playback.srsMediaFlv;
+    : playback.upstreamFlv;
   const hlsUrl = absoluteUrl(req, hlsPath);
   const flvUrl = absoluteUrl(req, flvPath);
   const embedUrl = absoluteUrl(

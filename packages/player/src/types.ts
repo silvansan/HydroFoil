@@ -5,6 +5,8 @@ export interface HydroFoilPlayerProps {
   src: string;
   /** HTTP-FLV fallback when live HLS is unavailable (same stream, lower latency). */
   flvSrc?: string;
+  /** Extra FLV URLs to try if the primary flvSrc fails (e.g. direct SRS vs /srs-media). */
+  flvFallbackSrcs?: string[];
   /** Optional label shown in player chrome */
   title?: string;
   /** Show live badge (default true for live-hls) */

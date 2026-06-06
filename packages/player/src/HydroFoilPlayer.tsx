@@ -64,6 +64,7 @@ function formatLevelLabel(height: number, bitrate: number): string {
 export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   src,
   flvSrc,
+  flvFallbackSrcs = [],
   title,
   isLive,
   playbackMode = 'live-hls',
@@ -73,6 +74,12 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
 }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const hlsRef = React.useRef<Hls | null>(null);
+  const flvCandidates = React.useMemo(
+    () => [...new Set([flvSrc, ...flvFallbackSrcs].filter((url): url is string => Boolean(url)))],
+    [flvSrc, flvFallbackSrcs]
+  );
+  const [flvCandidateIndex, setFlvCandidateIndex] = React.useState(0);
+  const activeFlvSrc = flvCandidates[flvCandidateIndex] ?? '';
   const [error, setError] = React.useState<string | null>(null);
   const [qualityOptions, setQualityOptions] = React.useState<QualityOption[]>([]);
   const [selectedQuality, setSelectedQuality] = React.useState(-1);
@@ -82,13 +89,17 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   const showLive = isLive ?? (playbackMode === 'live-hls' || playbackMode === 'live-flv');
 
   React.useEffect(() => {
+    setFlvCandidateIndex(0);
+  }, [flvCandidates]);
+
+  React.useEffect(() => {
     setTransport(playbackMode === 'live-flv' ? 'flv' : 'hls');
     setError(null);
-  }, [src, flvSrc, playbackMode]);
+  }, [src, activeFlvSrc, playbackMode]);
 
   React.useEffect(() => {
     const video = videoRef.current;
-    if (!video || transport !== 'flv' || !flvSrc) return;
+    if (!video || transport !== 'flv' || !activeFlvSrc) return;
 
     setError(null);
     setQualityOptions([]);
@@ -103,7 +114,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     const player = mpegts.createPlayer(
       {
         type: 'flv',
-        url: flvSrc,
+        url: activeFlvSrc,
         isLive: true,
         hasAudio: true,
         hasVideo: true,
@@ -124,6 +135,10 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     }
 
     const onFlvError = () => {
+      if (flvCandidateIndex + 1 < flvCandidates.length) {
+        setFlvCandidateIndex((current) => current + 1);
+        return;
+      }
       setError(showLive ? 'Stream offline or unavailable.' : 'Media failed to load.');
     };
     player.on(mpegts.Events.ERROR, onFlvError);
@@ -135,7 +150,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
       player.detachMediaElement();
       player.destroy();
     };
-  }, [transport, flvSrc, autoPlay, showLive]);
+  }, [transport, activeFlvSrc, autoPlay, showLive, flvCandidateIndex, flvCandidates.length]);
 
   React.useEffect(() => {
     const video = videoRef.current;

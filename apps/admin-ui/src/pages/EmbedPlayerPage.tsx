@@ -24,6 +24,13 @@ const EmbedPlayerPage: React.FC = () => {
 
   const token = tokenParam ?? manifest.manifest?.token;
   const flvSrc = manifest.manifest?.playerFlvUrl ?? '';
+  const flvFallbackSrcs = React.useMemo(() => {
+    const playApp = manifest.manifest?.playApp ?? safeApp;
+    const playStream = manifest.manifest?.playStream ?? safeStream;
+    if (!playApp || !playStream || typeof window === 'undefined') return [];
+    const origin = window.location.origin;
+    return [`${origin}/srs-media/${playApp}/${playStream}.flv`];
+  }, [manifest.manifest?.playApp, manifest.manifest?.playStream, safeApp, safeStream]);
   const canUseFlv =
     isLive &&
     Boolean(manifest.manifest?.active && manifest.manifest?.flvPlayable && flvSrc);
@@ -119,6 +126,7 @@ const EmbedPlayerPage: React.FC = () => {
       <HydroFoilPlayer
         src={src}
         flvSrc={flvSrc || undefined}
+        flvFallbackSrcs={flvFallbackSrcs}
         title={title}
         isLive={isLive && Boolean(manifest.manifest?.active)}
         playbackMode={playbackMode}

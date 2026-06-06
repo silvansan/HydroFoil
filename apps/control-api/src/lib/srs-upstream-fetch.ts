@@ -163,9 +163,9 @@ async function resolveUpstreamCandidates(
 
   const candidates = [
     ...new Set([
-      normalizedPath,
       ...(options?.preferredPaths ?? []),
       ...resolved,
+      normalizedPath,
       ...srsUpstreamCandidates(pathOnly, vhost),
     ]),
   ];
@@ -185,16 +185,17 @@ export async function pipeFromSrsUpstream(
   );
 
   let lastStatus = 404;
+  const candidateTimeoutMs = 8000;
 
   for (const candidate of candidates) {
-    const controller = new AbortController();
-    const onClientClose = () => controller.abort();
-    res.once('close', onClientClose);
+    const probeController = new AbortController();
+    const probeTimeout = setTimeout(() => probeController.abort(), candidateTimeoutMs);
 
     try {
       const merged = mergeUpstreamRequestQuery(candidate, extraQuery);
       const upstreamUrl = new URL(merged.replace(/^\/+/, ''), `${base}/`);
-      const response = await fetch(upstreamUrl, { signal: controller.signal });
+      const response = await fetch(upstreamUrl, { signal: probeController.signal });
+      clearTimeout(probeTimeout);
       lastStatus = response.status;
 
       if (response.status >= 200 && response.status < 300 && response.body) {
@@ -208,30 +209,36 @@ export async function pipeFromSrsUpstream(
         res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
         res.setHeader('Cache-Control', 'no-cache');
 
+        const streamController = new AbortController();
+        const onClientClose = () => streamController.abort();
+        res.once('close', onClientClose);
+
         await new Promise<void>((resolve, reject) => {
           const upstream = Readable.fromWeb(
             response.body as globalThis.ReadableStream<Uint8Array>
           );
           const onError = (error: Error) => {
-            if (!controller.signal.aborted) reject(error);
-            else resolve();
+            if (streamController.signal.aborted) resolve();
+            else reject(error);
           };
           upstream.on('error', onError);
           res.on('error', onError);
           upstream.pipe(res);
           res.once('finish', resolve);
-          res.once('close', resolve);
+          res.once('close', () => {
+            streamController.abort();
+            resolve();
+          });
         });
         return;
       }
 
       await response.arrayBuffer().catch(() => undefined);
-    } catch (error) {
-      if (controller.signal.aborted || res.writableEnded) {
+    } catch {
+      clearTimeout(probeTimeout);
+      if (res.writableEnded) {
         return;
       }
-    } finally {
-      res.off('close', onClientClose);
     }
   }
 
