@@ -1,3 +1,6 @@
+import type { Response } from 'express';
+import { Readable } from 'stream';
+
 import { config } from '../config';
 import {
   buildLegacyFlvPath,
@@ -132,14 +135,15 @@ export async function probeUpstreamMedia(pathOnly: string): Promise<boolean> {
   }
 }
 
-export async function fetchFromSrsUpstream(
+async function resolveUpstreamCandidates(
   pathWithQuery: string,
   options?: FetchFromSrsOptions
 ): Promise<{
-  status: number;
-  contentType?: string;
-  body: Buffer;
-  resolvedPath?: string;
+  base: string;
+  normalizedPath: string;
+  pathOnly: string;
+  extraQuery: string;
+  candidates: string[];
 }> {
   const base = SRS_BASE();
   const normalizedPath = normalizeUpstreamMediaPath(pathWithQuery);
@@ -165,6 +169,93 @@ export async function fetchFromSrsUpstream(
       ...srsUpstreamCandidates(pathOnly, vhost),
     ]),
   ];
+
+  return { base, normalizedPath, pathOnly, extraQuery, candidates };
+}
+
+/** Stream live FLV from SRS without buffering the entire body. */
+export async function pipeFromSrsUpstream(
+  pathWithQuery: string,
+  res: Response,
+  options?: FetchFromSrsOptions
+): Promise<void> {
+  const { base, pathOnly, extraQuery, candidates } = await resolveUpstreamCandidates(
+    pathWithQuery,
+    options
+  );
+
+  let lastStatus = 404;
+
+  for (const candidate of candidates) {
+    const controller = new AbortController();
+    const onClientClose = () => controller.abort();
+    res.once('close', onClientClose);
+
+    try {
+      const merged = mergeUpstreamRequestQuery(candidate, extraQuery);
+      const upstreamUrl = new URL(merged.replace(/^\/+/, ''), `${base}/`);
+      const response = await fetch(upstreamUrl, { signal: controller.signal });
+      lastStatus = response.status;
+
+      if (response.status >= 200 && response.status < 300 && response.body) {
+        res.status(response.status);
+        const contentType = response.headers.get('content-type') ?? undefined;
+        if (contentType) {
+          res.setHeader('Content-Type', contentType);
+        }
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
+        res.setHeader('Cache-Control', 'no-cache');
+
+        await new Promise<void>((resolve, reject) => {
+          const upstream = Readable.fromWeb(
+            response.body as globalThis.ReadableStream<Uint8Array>
+          );
+          const onError = (error: Error) => {
+            if (!controller.signal.aborted) reject(error);
+            else resolve();
+          };
+          upstream.on('error', onError);
+          res.on('error', onError);
+          upstream.pipe(res);
+          res.once('finish', resolve);
+          res.once('close', resolve);
+        });
+        return;
+      }
+
+      await response.arrayBuffer().catch(() => undefined);
+    } catch (error) {
+      if (controller.signal.aborted || res.writableEnded) {
+        return;
+      }
+    } finally {
+      res.off('close', onClientClose);
+    }
+  }
+
+  if (!res.headersSent) {
+    res.status(lastStatus);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.end();
+  }
+}
+
+export async function fetchFromSrsUpstream(
+  pathWithQuery: string,
+  options?: FetchFromSrsOptions
+): Promise<{
+  status: number;
+  contentType?: string;
+  body: Buffer;
+  resolvedPath?: string;
+}> {
+  const { base, pathOnly, extraQuery, candidates } = await resolveUpstreamCandidates(
+    pathWithQuery,
+    options
+  );
 
   let lastStatus = 404;
   let lastContentType: string | undefined;

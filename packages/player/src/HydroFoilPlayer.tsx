@@ -109,7 +109,8 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
         hasVideo: true,
       },
       {
-        enableWorker: true,
+        // Workers fetch with opaque/null origin — breaks cross-site iframe embeds without CORS.
+        enableWorker: false,
         enableStashBuffer: false,
         stashInitialSize: 128,
         lazyLoad: false,

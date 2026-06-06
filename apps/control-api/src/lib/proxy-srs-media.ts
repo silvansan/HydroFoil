@@ -1,6 +1,6 @@
 import type { Response } from 'express';
 
-import { fetchFromSrsUpstream } from './srs-upstream-fetch';
+import { fetchFromSrsUpstream, pipeFromSrsUpstream } from './srs-upstream-fetch';
 import { rewriteM3u8PlaylistForProxy } from './srs-m3u8-rewrite';
 import { upstreamPathsForResource } from '../services/playback-resolver';
 
@@ -23,6 +23,12 @@ export async function proxySrsMediaToResponse(
   }
 
   const query = resource.includes('?') ? resource.slice(resource.indexOf('?')) : '';
+
+  if (pathOnly.endsWith('.flv')) {
+    await pipeFromSrsUpstream(`${pathOnly}${query}`, res, { preferredPaths });
+    return;
+  }
+
   const proxied = await fetchFromSrsUpstream(`${pathOnly}${query}`, { preferredPaths });
 
   let payload = proxied.body;
