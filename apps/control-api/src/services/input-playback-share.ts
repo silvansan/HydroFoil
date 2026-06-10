@@ -161,9 +161,12 @@ export async function buildInputPlaybackShare(
   const allowTokenIssue = options?.allowTokenIssue ?? false;
   const expiresInSeconds = needsToken ? resolvePlaybackExpirySeconds(req) : config.playbackTokenTtlSeconds;
 
+  const embedAccessOptions = { queryTokenOnly: !allowTokenIssue };
+
   const token = resolveEmbedManifestToken(ctx.organizationId, effectiveBlock, req, app, stream, {
     allowTokenIssue,
     expiresInSeconds,
+    ...embedAccessOptions,
   });
 
   const manifestAllowed = canServePublicEmbedManifest(
@@ -171,7 +174,8 @@ export async function buildInputPlaybackShare(
     effectiveBlock,
     req,
     app,
-    stream
+    stream,
+    embedAccessOptions
   );
 
   if (
@@ -185,8 +189,9 @@ export async function buildInputPlaybackShare(
   const canPublishUrls =
     !needsToken ||
     allowTokenIssue ||
-    manifestAllowed ||
-    Boolean(token);
+    (effectiveBlock?.playbackAccessPolicy === 'token-required'
+      ? Boolean(token)
+      : manifestAllowed);
 
   const hlsPath = canPublishUrls
     ? protectedPaths

@@ -8,6 +8,12 @@ import { config } from '../config';
 
 const playbackTokenService = new PlaybackTokenService(config.playbackTokenSecret);
 
+/** Token from embed page URL only — ignores cookies/Authorization (public embed must not inherit operator cookies). */
+export function extractEmbedQueryToken(req: Request): string | null {
+  const queryToken = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  return queryToken || null;
+}
+
 export function extractPlaybackToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
@@ -144,7 +150,23 @@ export async function resolveStreamPlaybackBlock(
   stream: string
 ): Promise<DomainBlock | undefined> {
   const outputs = await resolvePlaybackOutputsForStream(ctx, app, stream);
-  return resolveEffectiveDomainBlock(ctx, outputs);
+  const directBlock = await resolveEffectiveDomainBlock(ctx, outputs);
+  if (directBlock) return directBlock;
+
+  const input = await ctx.repos.inputs.findByAppAndStreamKey(ctx.organizationId, app, stream);
+  if (!input?.enabled) return undefined;
+
+  const [routes, allOutputs] = await Promise.all([
+    ctx.repos.routes.findByInputId(ctx.organizationId, input.id),
+    ctx.repos.outputs.listAll(ctx.organizationId),
+  ]);
+  const linkedOutputIds = new Set(
+    routes.flatMap((route: { outputIds: string[] }) => route.outputIds.map(String))
+  );
+  const linkedOutputs = (allOutputs as Output[]).filter((output) =>
+    linkedOutputIds.has(String(output.id))
+  );
+  return resolveEffectiveDomainBlock(ctx, linkedOutputs);
 }
 
 export async function enforcePlaybackAccess(
@@ -156,7 +178,7 @@ export async function enforcePlaybackAccess(
 ): Promise<Output | null> {
   const outputs = await resolvePlaybackOutputsForStream(ctx, app, stream);
   const output = outputs[0] ?? null;
-  const block = await resolveEffectiveDomainBlock(ctx, outputs);
+  const block = await resolveStreamPlaybackBlock(ctx, app, stream);
 
   if (!block) {
     if (!output) {
@@ -209,18 +231,25 @@ export async function enforcePlaybackAccess(
   return output;
 }
 
+type EmbedAccessOptions = { queryTokenOnly?: boolean };
+
+function resolveRequestToken(req: Request, options?: EmbedAccessOptions): string | null {
+  return options?.queryTokenOnly ? extractEmbedQueryToken(req) : extractPlaybackToken(req);
+}
+
 export function canServePublicEmbedManifest(
   organizationId: string,
   block: DomainBlock | undefined,
   req: Request,
   app: string,
-  stream: string
+  stream: string,
+  options?: EmbedAccessOptions
 ): boolean {
   if (!block || block.playbackAccessPolicy === 'public') {
     return true;
   }
 
-  const token = extractPlaybackToken(req);
+  const token = resolveRequestToken(req, options);
   if (verifyPlaybackToken(token, organizationId, app, stream)) {
     return true;
   }
@@ -239,21 +268,21 @@ export function resolveEmbedManifestToken(
   req: Request,
   app: string,
   stream: string,
-  options: { allowTokenIssue: boolean; expiresInSeconds: number }
+  options: { allowTokenIssue: boolean; expiresInSeconds: number; queryTokenOnly?: boolean }
 ): string | undefined {
   const needsToken = policyNeedsToken(block);
   if (!needsToken) {
     return undefined;
   }
 
-  const requestToken = extractPlaybackToken(req);
+  const requestToken = resolveRequestToken(req, options);
   if (requestToken && verifyPlaybackToken(requestToken, organizationId, app, stream)) {
     return requestToken;
   }
 
   if (
     block?.playbackAccessPolicy === 'restricted' &&
-    canServePublicEmbedManifest(organizationId, block, req, app, stream)
+    canServePublicEmbedManifest(organizationId, block, req, app, stream, options)
   ) {
     return undefined;
   }

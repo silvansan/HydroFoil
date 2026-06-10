@@ -168,7 +168,6 @@ export function createPublicPlaybackRouter(ctx: AppContext): Router {
         scriptEmbedCode: share.scriptEmbedCode,
         playbackAccessPolicy: share.playbackAccessPolicy,
         requiresToken: signedLinkRequired && !share.token,
-        token: share.token,
         expiresAt: share.expiresAt,
       });
     })

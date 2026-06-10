@@ -59,6 +59,7 @@ export async function ensureInputHlsOutput(
   if (existing) return existing;
 
   const appName = application.appName;
+  const inheritedDomainBlockId = linkedOutputs.find((output) => output.domainBlockId)?.domainBlockId;
   const hlsOutput = await ctx.repos.outputs.create(ctx.organizationId, {
     name: `HLS: ${appName}/${input.streamKey}`,
     routeTarget: buildHlsRouteTarget(appName, input.streamKey),
@@ -67,6 +68,7 @@ export async function ensureInputHlsOutput(
     gatewayStreamName: input.streamKey,
     enabled: true,
     isPublic: true,
+    domainBlockId: inheritedDomainBlockId,
   });
 
   const route = routes[0];

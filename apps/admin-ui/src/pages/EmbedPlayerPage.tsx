@@ -28,8 +28,10 @@ const EmbedPlayerPage: React.FC = () => {
   });
 
   const isProtectedPlayback = manifest.manifest?.playbackAccessPolicy !== 'public';
+  const signedLinkRequired = manifest.manifest?.playbackAccessPolicy === 'token-required';
   const token = tokenParam;
-  const flvSrc = manifest.manifest?.playerFlvUrl ?? '';
+  const flvSrc =
+    signedLinkRequired && !token ? '' : (manifest.manifest?.playerFlvUrl ?? '');
   const flvFallbackSrcs = React.useMemo(() => {
     if (isProtectedPlayback) return [];
     const playApp = manifest.manifest?.playApp ?? safeApp;
@@ -67,13 +69,13 @@ const EmbedPlayerPage: React.FC = () => {
 
   const hlsSrc = React.useMemo(() => {
     if (!manifest.manifest?.playerHlsUrl) return '';
-    if (manifest.manifest.requiresToken && !token) return '';
+    if (signedLinkRequired && !token) return '';
     if (canUseHls || preferHlsForAbr) return manifest.manifest.playerHlsUrl;
     if (!isLive) return manifest.manifest.playerHlsUrl;
     return '';
   }, [
     manifest.manifest?.playerHlsUrl,
-    manifest.manifest?.requiresToken,
+    signedLinkRequired,
     manifest.manifest?.active,
     token,
     canUseHls,
@@ -86,7 +88,7 @@ const EmbedPlayerPage: React.FC = () => {
   const playbackMode =
     preferHlsForAbr || canUseHls ? 'live-hls' : preferFlv ? 'live-flv' : isLive ? 'live-hls' : 'vod-hls';
 
-  if (manifest.loading && !readyToPlay) {
+  if (manifest.loading && !readyToPlay && !signedLinkRequired) {
     return (
       <div style={messageStyle}>
         <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0 }}>Loading stream…</p>
@@ -102,12 +104,7 @@ const EmbedPlayerPage: React.FC = () => {
     );
   }
 
-  if (
-    !readyToPlay &&
-    manifest.manifest?.requiresToken &&
-    !token &&
-    manifest.manifest.playbackAccessPolicy !== 'public'
-  ) {
+  if (signedLinkRequired && !token) {
     return (
       <div style={messageStyle}>
         <p style={{ color: '#b91c1c', fontSize: '0.875rem', margin: 0, textAlign: 'center' }}>
