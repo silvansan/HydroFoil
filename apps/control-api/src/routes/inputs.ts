@@ -76,7 +76,9 @@ export function createInputsRouter(ctx: AppContext): Router {
     '/:id/playback-url',
     asyncHandler(async (req, res) => {
       await assertInputAccess(ctx.organizationId, req.params.id, getAccessScope(req), ctx.repos);
-      const share = await buildInputPlaybackShare(ctx, req.params.id, req);
+      const share = await buildInputPlaybackShare(ctx, req.params.id, req, {
+        allowTokenIssue: true,
+      });
       res.json(share);
     })
   );

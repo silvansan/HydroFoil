@@ -1,20 +1,24 @@
 import type { Request } from 'express';
 import type { Application, DomainBlock, Input, Output, Route } from '@hydrofoil/shared-types';
 import { isWatchOutputName } from '@hydrofoil/domain';
+import { buildIframeEmbedCode } from '../lib/iframe-embed';
 
 import type { AppContext } from '../context';
 import { config } from '../config';
-import { NotFoundError } from '../errors';
+import { HttpError, NotFoundError } from '../errors';
 import { absoluteUrl, appendTokenToPath } from '../lib/absolute-url';
+import {
+  canServePublicEmbedManifest,
+  policyNeedsToken,
+  resolveEmbedManifestToken,
+  usesProtectedPlayback,
+} from '../lib/playback-access';
 import { resolvePlaybackExpirySeconds } from '../lib/playback-expiry';
 import { ensureInputHlsOutput } from '../lib/provision-input-playback';
 import { buildScriptEmbedCode } from '../lib/script-embed';
 import { resolveInputAbrRenditions, type AbrRenditionDto } from './input-abr-renditions';
-import { PlaybackTokenService } from './playback-token';
 import { resolveLivePlayback } from './playback-resolver';
 import { resolvePlayableWebHlsTarget } from './resolve-web-playback';
-
-const playbackTokenService = new PlaybackTokenService(config.playbackTokenSecret);
 
 export interface InputPlaybackShareDto {
   app: string;
@@ -64,25 +68,17 @@ function resolveEffectiveDomainBlock(
   return undefined;
 }
 
-function policyNeedsToken(block: DomainBlock | undefined): boolean {
-  if (!block) return false;
-  return (
-    block.playbackAccessPolicy === 'token-required' ||
-    block.playbackAccessPolicy === 'restricted' ||
-    Boolean(block.tokenRequired)
-  );
-}
-
-function usesProtectedPlayback(block: DomainBlock | undefined): boolean {
-  if (!block) return false;
-  return block.playbackAccessPolicy !== 'public';
+export interface BuildPlaybackShareOptions {
+  /** Operator-only endpoints may mint fresh signed links. Public embed manifest must not. */
+  allowTokenIssue?: boolean;
 }
 
 export async function buildPlaybackShareByIngest(
   ctx: AppContext,
   app: string,
   stream: string,
-  req: Request
+  req: Request,
+  options?: BuildPlaybackShareOptions
 ): Promise<InputPlaybackShareDto> {
   const safeApp = app.replace(/^\/+|\/+$/g, '');
   const safeStream = stream.replace(/^\/+|\/+$/g, '');
@@ -94,13 +90,14 @@ export async function buildPlaybackShareByIngest(
   if (!input?.enabled) {
     throw new NotFoundError('Stream not found');
   }
-  return buildInputPlaybackShare(ctx, String(input.id), req);
+  return buildInputPlaybackShare(ctx, String(input.id), req, options);
 }
 
 export async function buildInputPlaybackShare(
   ctx: AppContext,
   inputId: string,
-  req: Request
+  req: Request,
+  options?: BuildPlaybackShareOptions
 ): Promise<InputPlaybackShareDto> {
   const input = (await ctx.repos.inputs.findById(ctx.organizationId, inputId)) as Input | null;
   if (!input) {
@@ -161,24 +158,46 @@ export async function buildInputPlaybackShare(
 
   const needsToken = policyNeedsToken(effectiveBlock);
   const protectedPaths = usesProtectedPlayback(effectiveBlock);
+  const allowTokenIssue = options?.allowTokenIssue ?? false;
   const expiresInSeconds = needsToken ? resolvePlaybackExpirySeconds(req) : config.playbackTokenTtlSeconds;
 
-  let token: string | undefined;
-  if (needsToken) {
-    token = playbackTokenService.issueToken({
-      organizationId: ctx.organizationId,
-      app,
-      stream,
-      exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
-    });
+  const token = resolveEmbedManifestToken(ctx.organizationId, effectiveBlock, req, app, stream, {
+    allowTokenIssue,
+    expiresInSeconds,
+  });
+
+  const manifestAllowed = canServePublicEmbedManifest(
+    ctx.organizationId,
+    effectiveBlock,
+    req,
+    app,
+    stream
+  );
+
+  if (
+    !allowTokenIssue &&
+    effectiveBlock?.playbackAccessPolicy === 'restricted' &&
+    !manifestAllowed
+  ) {
+    throw new HttpError(403, 'Playback blocked for this domain');
   }
 
-  const hlsPath = protectedPaths
-    ? appendTokenToPath(playback.protectedHls, token)
-    : playback.srsMediaHls;
-  const flvPath = protectedPaths
-    ? appendTokenToPath(playback.protectedFlv, token)
-    : playback.srsMediaFlv;
+  const canPublishUrls =
+    !needsToken ||
+    allowTokenIssue ||
+    manifestAllowed ||
+    Boolean(token);
+
+  const hlsPath = canPublishUrls
+    ? protectedPaths
+      ? appendTokenToPath(playback.protectedHls, token)
+      : playback.srsMediaHls
+    : '';
+  const flvPath = canPublishUrls
+    ? protectedPaths
+      ? appendTokenToPath(playback.protectedFlv, token)
+      : playback.srsMediaFlv
+    : '';
   const hlsUrl = absoluteUrl(req, hlsPath);
   const flvUrl = absoluteUrl(req, flvPath);
   const embedUrl = absoluteUrl(
@@ -194,15 +213,10 @@ export async function buildInputPlaybackShare(
 
   const abrRenditions = await resolveInputAbrRenditions(ctx, input);
 
-  const iframeEmbedCode = `<!-- HydroFoil Player (iframe) -->
-<iframe
-  src=${JSON.stringify(embedUrl)}
-  title=${JSON.stringify(`${ingestApp}/${ingestStream}`)}
-  width="960"
-  height="540"
-  style="border:0;border-radius:8px;background:#000;max-width:100%"
-  allow="autoplay; fullscreen; picture-in-picture"
-></iframe>`;
+  const iframeEmbedCode = buildIframeEmbedCode({
+    embedUrl,
+    title: `${ingestApp}/${ingestStream}`,
+  });
 
   return {
     app,

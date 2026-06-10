@@ -61,7 +61,7 @@ export function createApp(ctx: AppContext) {
       res.json(getOperatorPublicUrls());
     })
   );
-  app.use('/srs-media', createSrsMediaProxyRouter());
+  app.use('/srs-media', createSrsMediaProxyRouter(ctx));
   app.use('/api/playback', createPublicPlaybackRouter(ctx));
   app.use('/api', authMiddleware);
   app.use('/api', createAccessScopeMiddleware(ctx));

@@ -163,10 +163,10 @@ export const InputPlaybackShareCard: React.FC<InputPlaybackShareCardProps> = ({
         <div className="hf-embed-panel space-y-2 p-3">
           <p className="text-xs font-medium text-slate-300">Iframe embed (recommended)</p>
           <p className="text-xs hf-muted">
-            Paste into WordPress, CodePen, or any site. Uses the HydroFoil player with live FLV
-            fallback and HLS quality options when ABR is active.
+            Paste into WordPress, CodePen, or any site. Width fills its container (up to 960px) and
+            height adjusts to the player. FLV fallback and HLS quality options when ABR is active.
           </p>
-          <pre className="hf-code-snippet max-h-28 overflow-auto whitespace-pre-wrap break-all">
+          <pre className="hf-code-snippet max-h-40 overflow-auto whitespace-pre-wrap break-all">
             {share.iframeEmbedCode}
           </pre>
           <Button

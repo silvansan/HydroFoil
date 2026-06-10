@@ -14,6 +14,8 @@ export interface HydroFoilPlayerProps {
   /** Show live badge (default true for live-hls) */
   isLive?: boolean;
   playbackMode?: HydroFoilPlaybackMode;
+  /** Embed iframe: transparent shell, compact layout, quality cog from ABR hints. */
+  variant?: 'default' | 'embed';
   className?: string;
   autoPlay?: boolean;
   muted?: boolean;
@@ -31,9 +33,15 @@ export interface HydroFoilScriptEmbedOptions {
 
 export interface HydroFoilIframeEmbedOptions {
   embedUrl: string;
+  /** Container width (default 100%). */
   width?: number | string;
+  /** Fallback iframe height before the embed page reports its size (default 360). */
   height?: number | string;
+  /** Max container width (default 960px). */
+  maxWidth?: number | string;
   title?: string;
+  /** Wrapper element id for the resize listener (derived from stream when omitted). */
+  elementId?: string;
 }
 
 export interface LiveEmbedPageUrlOptions {
