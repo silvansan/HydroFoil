@@ -3,6 +3,7 @@ import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
 
 import type { HydroFoilPlayerProps } from './types';
+import './player.css';
 
 type QualityOption = { index: number; label: string; height?: number };
 
@@ -94,44 +95,6 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
 
   const menuOptions = qualityOptions.length > 0 ? qualityOptions : hintOptions;
   const showQualityMenu = menuOptions.length > 0;
-
-  const shellStyle: React.CSSProperties = isEmbed
-    ? {
-        position: 'relative',
-        width: '100%',
-        background: 'transparent',
-        overflow: 'hidden',
-      }
-    : {
-        position: 'relative',
-        width: '100%',
-        background: '#0a1628',
-        borderRadius: '0.5rem',
-        overflow: 'hidden',
-        border: '1px solid rgba(45, 212, 191, 0.15)',
-      };
-
-  const chromeStyle: React.CSSProperties = isEmbed
-    ? {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '0.75rem',
-        padding: '0.4rem 0.6rem',
-        background: 'rgba(15, 23, 42, 0.45)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-      }
-    : {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '0.75rem',
-        padding: '0.5rem 0.75rem',
-        background: 'linear-gradient(180deg, rgba(10,22,40,0.95) 0%, rgba(10,22,40,0.6) 100%)',
-        borderBottom: '1px solid rgba(45, 212, 191, 0.1)',
-      };
 
   const applyHlsLevelForHeight = React.useCallback((height: number) => {
     const hls = hlsRef.current;
@@ -377,99 +340,45 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     }
   };
 
-  const badgeLive: React.CSSProperties = {
-    fontSize: '0.65rem',
-    fontWeight: 700,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-    color: '#fff',
-    background: '#dc2626',
-    padding: '0.15rem 0.45rem',
-    borderRadius: '0.25rem',
-  };
+  const playerClassName = [
+    'hf-player',
+    isEmbed ? 'hf-player--embed' : 'hf-player--default',
+    'hydrofoil-player',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
-  const badgeVod: React.CSSProperties = {
-    ...badgeLive,
-    background: '#0891b2',
-  };
+  const qualityItemClass = (active: boolean) =>
+    ['hf-player__quality-item', active ? 'is-active' : ''].filter(Boolean).join(' ');
 
   return (
-    <div className={`hydrofoil-player ${className}`.trim()} style={shellStyle}>
+    <div
+      className={playerClassName}
+      style={{ position: 'relative', width: '100%', ...(isEmbed ? {} : { background: '#0a1628', borderRadius: '0.5rem', border: '1px solid rgba(45, 212, 191, 0.15)' }) }}
+    >
       {(title || showLive || showQualityMenu) && (
-        <div style={chromeStyle}>
-          <span
-            style={{
-              fontSize: '0.8rem',
-              color: '#e2e8f0',
-              fontWeight: 500,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              flex: 1,
-              minWidth: 0,
-            }}
-          >
-            {title ?? 'HydroFoil'}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+        <div className="hf-player__chrome">
+          <span className="hf-player__title">{title ?? 'HydroFoil'}</span>
+          <div className="hf-player__actions">
             {showQualityMenu && (
               <div ref={qualityRef} style={{ position: 'relative' }}>
                 <button
                   type="button"
+                  className={['hf-player__settings-btn', qualityOpen ? 'is-open' : ''].filter(Boolean).join(' ')}
                   aria-label="Video quality"
                   title={`Quality: ${currentQualityLabel}`}
                   onClick={() => setQualityOpen((open) => !open)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '1.75rem',
-                    height: '1.75rem',
-                    borderRadius: '0.35rem',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    background: qualityOpen ? 'rgba(45, 212, 191, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                    color: '#e2e8f0',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
                 >
                   <SettingsIcon />
                 </button>
                 {qualityOpen && (
-                  <div
-                    role="menu"
-                    style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 0.35rem)',
-                      right: 0,
-                      minWidth: '8.5rem',
-                      borderRadius: '0.5rem',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      background: 'rgba(15, 23, 42, 0.92)',
-                      backdropFilter: 'blur(12px)',
-                      WebkitBackdropFilter: 'blur(12px)',
-                      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-                      padding: '0.25rem',
-                      zIndex: 20,
-                    }}
-                  >
+                  <div className="hf-player__quality-menu" role="menu">
                     <button
                       type="button"
                       role="menuitem"
+                      className={qualityItemClass(selectedQuality === -1)}
                       onClick={() => onQualityPick('-1')}
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        textAlign: 'left',
-                        border: 'none',
-                        borderRadius: '0.35rem',
-                        background:
-                          selectedQuality === -1 ? 'rgba(45, 212, 191, 0.18)' : 'transparent',
-                        color: '#e2e8f0',
-                        fontSize: '0.75rem',
-                        padding: '0.45rem 0.55rem',
-                        cursor: 'pointer',
-                      }}
                     >
                       Auto
                     </button>
@@ -478,22 +387,8 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
                         key={`${option.label}-${option.index}`}
                         type="button"
                         role="menuitem"
+                        className={qualityItemClass(selectedQuality === option.index)}
                         onClick={() => onQualityPick(String(option.index))}
-                        style={{
-                          display: 'block',
-                          width: '100%',
-                          textAlign: 'left',
-                          border: 'none',
-                          borderRadius: '0.35rem',
-                          background:
-                            selectedQuality === option.index
-                              ? 'rgba(45, 212, 191, 0.18)'
-                              : 'transparent',
-                          color: '#e2e8f0',
-                          fontSize: '0.75rem',
-                          padding: '0.45rem 0.55rem',
-                          cursor: 'pointer',
-                        }}
                       >
                         {option.label}
                       </button>
@@ -502,41 +397,26 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
                 )}
               </div>
             )}
-            <span style={showLive ? badgeLive : badgeVod}>{showLive ? 'Live' : 'VOD'}</span>
+            <span
+              className={[
+                'hf-player__badge',
+                showLive ? 'hf-player__badge--live' : 'hf-player__badge--vod',
+              ].join(' ')}
+            >
+              {showLive ? 'Live' : 'VOD'}
+            </span>
           </div>
         </div>
       )}
       <video
         ref={videoRef}
+        className="hf-player__video"
         controls
+        controlsList="nodownload"
         playsInline
         muted={muted}
-        style={{
-          width: '100%',
-          display: 'block',
-          background: isEmbed ? 'transparent' : '#000',
-          verticalAlign: 'top',
-          ...(isEmbed ? {} : { aspectRatio: '16 / 9' }),
-        }}
       />
-      {error && (
-        <p
-          style={{
-            position: 'absolute',
-            bottom: '0.5rem',
-            left: '0.5rem',
-            right: '0.5rem',
-            margin: 0,
-            borderRadius: '0.375rem',
-            background: 'rgba(127, 29, 29, 0.92)',
-            padding: '0.5rem 0.75rem',
-            fontSize: '0.75rem',
-            color: '#fecaca',
-          }}
-        >
-          {error}
-        </p>
-      )}
+      {error && <p className="hf-player__error">{error}</p>}
     </div>
   );
 };

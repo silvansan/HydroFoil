@@ -10,3 +10,36 @@ body,
 * {
   box-sizing: border-box;
 }
+
+.hf-embed-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 7.5rem;
+  padding: 1.5rem 1.25rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #00c8e8 0%, #d9f4fb 52%, #ffffff 100%);
+  border: 1px solid rgba(0, 160, 186, 0.22);
+  box-shadow: 0 6px 20px rgba(0, 160, 186, 0.12);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.hf-embed-status__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: #0c4a6e;
+}
+
+.hf-embed-status__subtitle {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #0369a1;
+}
