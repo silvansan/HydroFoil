@@ -49,6 +49,32 @@ export function resolveStreamVhost(row: SrsStreamRow): string {
   return candidates[0] ?? '__defaultVhost__';
 }
 
+/** Operator-facing playback path — vhost is implied by the site hostname (nginx injects ?vhost= to SRS). */
+export function buildPublicMediaPath(
+  app: string,
+  stream: string,
+  ext: 'm3u8' | 'flv' | 'ts'
+): string {
+  const safeApp = normalizeApp(app);
+  const safeStream = stream.replace(/^\/+|\/+$/g, '');
+  return `/${safeApp}/${safeStream}.${ext}`;
+}
+
+/** Default ingest vhost when SRS has no active stream row (new deploy / any domain). */
+export function resolveDefaultIngestVhost(): string {
+  const configured = config.srsIngestVhost;
+  if (configured && configured !== 'localhost') {
+    return configured;
+  }
+  try {
+    const host = new URL(config.publicAppUrl).hostname;
+    if (host) return host;
+  } catch {
+    // ignore
+  }
+  return '__defaultVhost__';
+}
+
 /** Canonical SRS HTTP paths (aligned with hls m3u8=[app]/[stream].m3u8 and remux [app]/[stream].flv). */
 export function buildUpstreamMediaPath(
   app: string,
@@ -113,7 +139,7 @@ export async function resolveLivePlayback(
   const streams = await listSrsStreams();
   const row = findSrsStream(streams, safeApp, safeStream);
 
-  const vhost = row ? resolveStreamVhost(row) : '__defaultVhost__';
+  const vhost = row ? resolveStreamVhost(row) : resolveDefaultIngestVhost();
   const active = row ? row.publish?.active !== false : false;
 
   const upstreamHls = buildUpstreamMediaPath(safeApp, safeStream, vhost, 'm3u8');
@@ -128,8 +154,8 @@ export async function resolveLivePlayback(
     }
   }
 
-  const srsMediaHls = `/srs-media/${safeApp}/${safeStream}.m3u8`;
-  const srsMediaFlv = `/srs-media/${safeApp}/${safeStream}.flv`;
+  const srsMediaHls = buildPublicMediaPath(safeApp, safeStream, 'm3u8');
+  const srsMediaFlv = buildPublicMediaPath(safeApp, safeStream, 'flv');
   const protectedHls = `/api/playback/live/${safeApp}/${safeStream}.m3u8`;
   const protectedFlv = `/api/playback/live/${safeApp}/${safeStream}.flv`;
 
@@ -159,7 +185,7 @@ export async function upstreamPathsForResource(
 ): Promise<string[]> {
   const streams = await listSrsStreams();
   const row = findSrsStream(streams, app, stream);
-  const vhost = row ? resolveStreamVhost(row) : '__defaultVhost__';
+  const vhost = row ? resolveStreamVhost(row) : resolveDefaultIngestVhost();
   const safeApp = normalizeApp(app);
   const safeStream = stream.replace(/^\/+|\/+$/g, '');
 

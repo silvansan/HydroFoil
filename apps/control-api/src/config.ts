@@ -1,3 +1,11 @@
+function hostnameFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
 export const config = {
   port: Number(process.env.PORT ?? process.env.CONTROL_API_PORT ?? 3001),
   databaseUrl: process.env.DATABASE_URL ?? 'postgresql://hydrofoil:hydrofoil_dev@localhost:5432/hydrofoil',
@@ -34,6 +42,12 @@ export const config = {
   storageSecretKey: process.env.STORAGE_SECRET_KEY ?? '',
   /** Public URL of the operator UI (for links in email). */
   publicAppUrl: (process.env.PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, ''),
+  /**
+   * SRS ingest/playback vhost — must match RTMPS publish hostname.
+   * Defaults from SRS_INGEST_VHOST or hostname of PUBLIC_APP_URL (same as srs-entrypoint.sh).
+   */
+  srsIngestVhost:
+    (process.env.SRS_INGEST_VHOST ?? hostnameFromUrl(process.env.PUBLIC_APP_URL ?? '')).trim(),
   smtpHost: process.env.SMTP_HOST ?? '',
   smtpPort: Number(process.env.SMTP_PORT ?? 587),
   smtpSecure: process.env.SMTP_SECURE === 'true',

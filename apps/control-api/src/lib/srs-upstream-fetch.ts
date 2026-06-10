@@ -7,6 +7,7 @@ import {
   buildUpstreamMediaPath,
   findSrsStream,
   listSrsStreams,
+  resolveDefaultIngestVhost,
   resolveStreamVhost,
   upstreamPathsForResource,
 } from '../services/playback-resolver';
@@ -159,7 +160,7 @@ async function resolveUpstreamCandidates(
     appStream && appStream[1] && appStream[2]
       ? findSrsStream(streams, appStream[1], appStream[2])
       : undefined;
-  const vhost = row ? resolveStreamVhost(row) : '__defaultVhost__';
+  const vhost = row ? resolveStreamVhost(row) : resolveDefaultIngestVhost();
 
   const candidates = [
     ...new Set([
