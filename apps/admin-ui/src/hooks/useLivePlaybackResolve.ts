@@ -60,6 +60,8 @@ export function useLivePlaybackResolve(
     vhost: resolved?.vhost ?? null,
     playable: Boolean(resolved?.playable),
     active: Boolean(resolved?.active),
+    hlsPlayable: Boolean(resolved?.hlsPlayable),
+    abrRenditions: resolved?.abrRenditions ?? [],
     reload: load,
   };
 }

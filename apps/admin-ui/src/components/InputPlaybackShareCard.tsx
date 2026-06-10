@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from '@hydrofoil/ui-kit';
-import { RefreshCw } from 'lucide-react';
+import { ChevronDown, RefreshCw } from 'lucide-react';
 
 import type { InputPlaybackShare } from '../api/types';
 import type { PlaybackShareOptions } from '../hooks/useInputPlaybackShare';
@@ -40,6 +40,7 @@ export const InputPlaybackShareCard: React.FC<InputPlaybackShareCardProps> = ({
   const [expiryLocal, setExpiryLocal] = React.useState(defaultExpiryDateTimeLocal());
   const [expiryError, setExpiryError] = React.useState<string | null>(null);
   const [generating, setGenerating] = React.useState(false);
+  const [scriptEmbedOpen, setScriptEmbedOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (share?.expiresAt) {
@@ -159,11 +160,12 @@ export const InputPlaybackShareCard: React.FC<InputPlaybackShareCardProps> = ({
       )}
 
       <div className="space-y-2">
-        <p className="text-xs hf-muted">
-          Iframe = easy CMS paste. Script = strictest domain control on your site.
-        </p>
         <div className="hf-embed-panel space-y-2 p-3">
-          <p className="text-xs font-medium text-slate-300">Iframe embed</p>
+          <p className="text-xs font-medium text-slate-300">Iframe embed (recommended)</p>
+          <p className="text-xs hf-muted">
+            Paste into WordPress, CodePen, or any site. Uses the HydroFoil player with live FLV
+            fallback and HLS quality options when ABR is active.
+          </p>
           <pre className="hf-code-snippet max-h-28 overflow-auto whitespace-pre-wrap break-all">
             {share.iframeEmbedCode}
           </pre>
@@ -175,18 +177,37 @@ export const InputPlaybackShareCard: React.FC<InputPlaybackShareCardProps> = ({
             Copy iframe code
           </Button>
         </div>
-        <div className="hf-embed-panel space-y-2 p-3">
-          <p className="text-xs font-medium text-slate-300">Script embed (hls.js)</p>
-          <pre className="hf-code-snippet max-h-28 overflow-auto whitespace-pre-wrap break-all">
-            {share.scriptEmbedCode}
-          </pre>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => notify(share.scriptEmbedCode, 'Script embed copied')}
+        <div className="hf-embed-panel overflow-hidden">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800/40"
+            onClick={() => setScriptEmbedOpen((open) => !open)}
+            aria-expanded={scriptEmbedOpen}
           >
-            Copy script embed
-          </Button>
+            <span>Advanced: script embed (HLS-only)</span>
+            <ChevronDown
+              size={16}
+              className={`shrink-0 text-slate-500 transition-transform ${scriptEmbedOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {scriptEmbedOpen ? (
+            <div className="space-y-2 border-t border-slate-800/60 p-3">
+              <p className="text-xs hf-muted">
+                For sites that block iframes. HLS only — slower than the iframe player and no FLV
+                fallback.
+              </p>
+              <pre className="hf-code-snippet max-h-28 overflow-auto whitespace-pre-wrap break-all">
+                {share.scriptEmbedCode}
+              </pre>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => notify(share.scriptEmbedCode, 'Script embed copied')}
+              >
+                Copy script embed
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
 

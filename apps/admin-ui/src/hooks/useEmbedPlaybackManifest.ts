@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { DomainBlock } from '../api/types';
+import type { AbrRendition, DomainBlock } from '../api/types';
 
 export interface EmbedPlaybackManifest {
   active: boolean;
@@ -17,6 +17,7 @@ export interface EmbedPlaybackManifest {
   requiresToken: boolean;
   token?: string;
   expiresAt?: string;
+  abrRenditions?: AbrRendition[];
 }
 
 /** Public manifest for /embed — no operator JWT. */

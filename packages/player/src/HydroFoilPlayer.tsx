@@ -61,10 +61,22 @@ function formatLevelLabel(height: number, bitrate: number): string {
   return 'Quality';
 }
 
+function hintLabelForHeight(
+  height: number,
+  hints?: Array<{ label: string; height: number }>
+): string | undefined {
+  if (!hints?.length || height <= 0) return undefined;
+  const exact = hints.find((hint) => hint.height === height);
+  if (exact) return exact.label;
+  const close = hints.find((hint) => Math.abs(hint.height - height) <= 32);
+  return close?.label;
+}
+
 export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   src,
   flvSrc,
   flvFallbackSrcs = [],
+  renditionHints,
   title,
   isLive,
   playbackMode = 'live-hls',
@@ -177,10 +189,14 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
         setQualityOptions([]);
         return;
       }
-      const options: QualityOption[] = levels.map((level, index) => ({
-        index,
-        label: formatLevelLabel(level.height ?? 0, level.bitrate ?? 0),
-      }));
+      const options: QualityOption[] = levels.map((level, index) => {
+        const height = level.height ?? 0;
+        const hint = hintLabelForHeight(height, renditionHints);
+        return {
+          index,
+          label: hint ?? formatLevelLabel(height, level.bitrate ?? 0),
+        };
+      });
       setQualityOptions(options);
       setSelectedQuality(hls.currentLevel >= 0 ? hls.currentLevel : -1);
     };
@@ -238,7 +254,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
       hls.destroy();
       hlsRef.current = null;
     };
-  }, [src, flvSrc, autoPlay, playbackMode, showLive, transport]);
+  }, [src, flvSrc, autoPlay, playbackMode, showLive, transport, renditionHints]);
 
   const onQualityChange = (value: string) => {
     const level = Number(value);

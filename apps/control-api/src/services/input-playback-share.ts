@@ -9,6 +9,7 @@ import { absoluteUrl, appendTokenToPath } from '../lib/absolute-url';
 import { resolvePlaybackExpirySeconds } from '../lib/playback-expiry';
 import { ensureInputHlsOutput } from '../lib/provision-input-playback';
 import { buildScriptEmbedCode } from '../lib/script-embed';
+import { resolveInputAbrRenditions, type AbrRenditionDto } from './input-abr-renditions';
 import { PlaybackTokenService } from './playback-token';
 import { resolveLivePlayback } from './playback-resolver';
 import { resolvePlayableWebHlsTarget } from './resolve-web-playback';
@@ -35,6 +36,7 @@ export interface InputPlaybackShareDto {
   expiresInSeconds?: number;
   iframeEmbedCode: string;
   scriptEmbedCode: string;
+  abrRenditions: AbrRenditionDto[];
 }
 
 function pickWebPlaybackOutput(outputs: Output[]): Output | null {
@@ -190,6 +192,8 @@ export async function buildInputPlaybackShare(
     }).toString()}`
   );
 
+  const abrRenditions = await resolveInputAbrRenditions(ctx, input);
+
   const iframeEmbedCode = `<!-- HydroFoil Player (iframe) -->
 <iframe
   src=${JSON.stringify(embedUrl)}
@@ -220,5 +224,6 @@ export async function buildInputPlaybackShare(
     expiresInSeconds: token ? expiresInSeconds : undefined,
     iframeEmbedCode,
     scriptEmbedCode: buildScriptEmbedCode(hlsUrl, input.name),
+    abrRenditions,
   };
 }

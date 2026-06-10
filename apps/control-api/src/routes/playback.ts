@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
-import type { DomainBlock, Output } from '@hydrofoil/shared-types';
+import type { DomainBlock, Input, Output } from '@hydrofoil/shared-types';
 
 import type { AppContext } from '../context';
 import { config } from '../config';
@@ -9,8 +9,10 @@ import { BadRequestError, HttpError, NotFoundError } from '../errors';
 import { asyncHandler } from '../middleware/async-handler';
 import { proxySrsMediaToResponse } from '../lib/proxy-srs-media';
 import { PlaybackTokenService } from '../services/playback-token';
-import { resolveLivePlayback } from '../services/playback-resolver';
+import { resolveInputAbrRenditions } from '../services/input-abr-renditions';
+import { buildPublicMediaPath, resolveLivePlayback } from '../services/playback-resolver';
 import { buildPlaybackShareByIngest } from '../services/input-playback-share';
+import { probeUpstreamMedia } from '../lib/srs-upstream-fetch';
 
 const issuePlaybackTokenSchema = z.object({
   app: z.string().min(1),
@@ -301,6 +303,7 @@ export function createPublicPlaybackRouter(ctx: AppContext): Router {
         playStream: share.stream,
         playerHlsUrl: share.hlsUrl,
         playerFlvUrl: share.flvUrl,
+        abrRenditions: share.abrRenditions,
         embedUrl: share.embedUrl,
         iframeEmbedCode: share.iframeEmbedCode,
         scriptEmbedCode: share.scriptEmbedCode,
@@ -331,6 +334,15 @@ export function createPlaybackRouter(ctx: AppContext): Router {
 
       await assertOperatorPlaybackTarget(ctx, app, stream);
       const resolved = await resolveLivePlayback(app, stream, { monitorMode: 'rtmp' });
+      const input = (await ctx.repos.inputs.findByAppAndStreamKey(
+        ctx.organizationId,
+        app,
+        stream
+      )) as Input | null;
+      const abrRenditions = input ? await resolveInputAbrRenditions(ctx, input) : [];
+      const hlsPlayable =
+        resolved.active &&
+        (await probeUpstreamMedia(buildPublicMediaPath(app, stream, 'm3u8')));
 
       const outputs = (await ctx.repos.outputs.listAll(ctx.organizationId)) as Output[];
       const webHlsOutput = outputs.find(
@@ -356,6 +368,8 @@ export function createPlaybackRouter(ctx: AppContext): Router {
         protectedFlvUrl: resolved.protectedFlv,
         webPlaybackAvailable: Boolean(webHlsOutput),
         webHlsRouteTarget: webHlsOutput?.routeTarget ?? null,
+        hlsPlayable,
+        abrRenditions,
       });
     })
   );

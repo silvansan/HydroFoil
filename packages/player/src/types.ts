@@ -7,6 +7,8 @@ export interface HydroFoilPlayerProps {
   flvSrc?: string;
   /** Extra FLV URLs to try if the primary flvSrc fails (e.g. direct SRS vs /srs-media). */
   flvFallbackSrcs?: string[];
+  /** Labels from assigned ABR profiles — matched to HLS levels by height. */
+  renditionHints?: Array<{ label: string; height: number }>;
   /** Optional label shown in player chrome */
   title?: string;
   /** Show live badge (default true for live-hls) */

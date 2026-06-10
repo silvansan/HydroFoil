@@ -271,6 +271,13 @@ export interface InputPlaybackShare {
   expiresInSeconds?: number;
   iframeEmbedCode: string;
   scriptEmbedCode: string;
+  abrRenditions?: AbrRendition[];
+}
+
+export interface AbrRendition {
+  label: string;
+  height: number;
+  bitrateKbps: number;
 }
 
 /** Resolved SRS playback paths for operator preview (from GET /api/playback/resolve). */
@@ -289,6 +296,8 @@ export interface LivePlaybackResolve {
   protectedFlvUrl: string;
   webPlaybackAvailable: boolean;
   webHlsRouteTarget: string | null;
+  hlsPlayable?: boolean;
+  abrRenditions?: AbrRendition[];
 }
 
 export interface VodRoute {

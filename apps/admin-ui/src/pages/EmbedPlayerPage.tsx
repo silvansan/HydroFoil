@@ -127,6 +127,10 @@ const EmbedPlayerPage: React.FC = () => {
         src={src}
         flvSrc={flvSrc || undefined}
         flvFallbackSrcs={flvFallbackSrcs}
+        renditionHints={manifest.manifest?.abrRenditions?.map((row) => ({
+          label: row.label,
+          height: row.height,
+        }))}
         title={title}
         isLive={isLive && Boolean(manifest.manifest?.active)}
         playbackMode={playbackMode}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Badge } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
@@ -71,6 +72,7 @@ function loadSavedVisibility(): WidgetVisibility {
 }
 
 const SystemStatusPage: React.FC = () => {
+  const navigate = useNavigate();
   const { openMonitor, monitorModal } = useStreamMonitorModal();
   const [status, setStatus] = React.useState<DashboardState>({
     api: 'connecting',
@@ -411,7 +413,24 @@ const SystemStatusPage: React.FC = () => {
                   {activeStreamRows.map((row) => (
                     <div
                       key={row.id}
-                      className="hf-live-row"
+                      role={row.inputId ? 'button' : undefined}
+                      tabIndex={row.inputId ? 0 : undefined}
+                      className={`hf-live-row${row.inputId ? ' cursor-pointer transition-colors hover:border-[var(--hf-brand-500)] hover:bg-brand-500/5' : ''}`}
+                      onClick={
+                        row.inputId
+                          ? () => navigate(`/stream-keys/${row.inputId}`)
+                          : undefined
+                      }
+                      onKeyDown={
+                        row.inputId
+                          ? (event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                navigate(`/stream-keys/${row.inputId}`);
+                              }
+                            }
+                          : undefined
+                      }
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
@@ -425,7 +444,11 @@ const SystemStatusPage: React.FC = () => {
                             <p>Resolution: {row.resolution}</p>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2 shrink-0">
+                        <div
+                          className="flex flex-col items-end gap-2 shrink-0"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
                           <Badge variant="success">LIVE</Badge>
                           <StreamMediaActions
                             inputId={row.inputId}
