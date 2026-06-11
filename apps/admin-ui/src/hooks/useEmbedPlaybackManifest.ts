@@ -61,7 +61,9 @@ export function useEmbedPlaybackManifest(
     if (token) {
       params.set('token', token);
     }
-    fetch(`/api/playback/embed-manifest?${params.toString()}`)
+    fetch(`/api/playback/embed-manifest?${params.toString()}`, {
+      credentials: 'omit',
+    })
       .then(async (res) => {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };

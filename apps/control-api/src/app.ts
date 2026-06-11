@@ -34,6 +34,7 @@ import { asyncHandler } from './middleware/async-handler';
 import { createSrsMediaProxyRouter } from './routes/srs-media-proxy';
 import { createVodPublicPlaybackRouter, createVodRoutesRouter } from './routes/vod-routes';
 import { createWebhooksRouter } from './routes/webhooks';
+import { applyEmbedManifestCorsHeaders, reflectEmbedManifestCors } from './lib/cors-reflect';
 
 function parseOrigin(url: string): string | null {
   try {
@@ -69,12 +70,20 @@ export function createApp(ctx: AppContext) {
 
   app.set('trust proxy', true);
 
+  // Sandboxed embed iframes send Origin: null — reflect CORS before the global handler so
+  // errors still expose ACAO (cors rejects with next(err) and skips header injection).
+  app.use('/api/playback/embed-manifest', reflectEmbedManifestCors);
+
   app.use(
     cors({
       origin(origin, callback) {
         // Missing Origin (same-origin navigation) and opaque iframe origins (Origin: null).
-        if (!origin || origin === 'null') {
+        if (!origin) {
           callback(null, true);
+          return;
+        }
+        if (origin === 'null') {
+          callback(null, 'null');
           return;
         }
 
@@ -152,7 +161,9 @@ export function createApp(ctx: AppContext) {
 
   app.use('/', createVodPublicPlaybackRouter(ctx));
 
-  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    applyEmbedManifestCorsHeaders(req, res);
+
     if (err instanceof HttpError) {
       res.status(err.statusCode).json({ error: err.message, timestamp: new Date().toISOString() });
       return;
