@@ -18,7 +18,7 @@ function streamPath(session: LiveSession): string {
 }
 
 function cell(value: string | undefined, mono = false): React.ReactNode {
-  if (!value) return <span className="text-slate-600">—</span>;
+  if (!value) return <span className="hf-muted">—</span>;
   return (
     <span className={mono ? 'font-mono text-slate-300' : 'text-slate-300'} title={value}>
       {value}
@@ -140,7 +140,7 @@ const LiveSessionsPage: React.FC = () => {
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-600">—</span>
+                          <span className="hf-muted">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">

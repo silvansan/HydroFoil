@@ -53,6 +53,11 @@ services:
   srs:
     image: ossrs/srs:5
     container_name: hydrofoil-srs
+    environment:
+      SRS_WEBHOOK_SECRET: ${SRS_WEBHOOK_SECRET:-hydrofoil-dev-webhook-secret}
+      SRS_INGEST_VHOST: ${SRS_INGEST_VHOST:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3080}
+    entrypoint: ['/bin/sh', '/usr/local/bin/hydrofoil-srs-entrypoint.sh']
     ports:
       - '1935:1935'
       - '8080:8080'
@@ -62,6 +67,7 @@ services:
       - '10080:10080/udp'
     volumes:
       - ./config/srs/srs.conf:/usr/local/srs/conf/srs.conf
+      - ./deploy/portainer/srs-entrypoint.sh:/usr/local/bin/hydrofoil-srs-entrypoint.sh:ro
       - srs_data:/usr/local/srs/objs/nginx/html
     depends_on:
       control-api:
@@ -117,6 +123,7 @@ services:
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-hydrofoil-dev-auth-secret}
       PLAYBACK_TOKEN_SECRET: ${PLAYBACK_TOKEN_SECRET:-hydrofoil-dev-playback-secret}
       PLAYBACK_TOKEN_TTL_SECONDS: ${PLAYBACK_TOKEN_TTL_SECONDS:-3600}
+      SRS_WEBHOOK_SECRET: ${SRS_WEBHOOK_SECRET:-hydrofoil-dev-webhook-secret}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3080}
     ports:
@@ -200,8 +207,6 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_PUBLIC_ENDPOINT: localhost:9000
       NODE_ENV: development
-    ports:
-      - '3002:3002'
     depends_on:
       postgres:
         condition: service_healthy

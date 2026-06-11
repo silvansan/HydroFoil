@@ -82,11 +82,42 @@ async function withWebhookServer<T>(ctx: AppContext, run: (baseUrl: string) => P
   }
 }
 
-async function postWebhook(baseUrl: string, body: unknown, headers?: Record<string, string>) {
-  const response = await fetch(`${baseUrl}/api/webhooks/srs`, {
+const testWebhookSecret = 'test-webhook-secret';
+
+type WebhookAuth =
+  | { kind: 'header'; value?: string }
+  | { kind: 'query'; param?: 'secret' | 'webhook_secret'; value?: string }
+  | { kind: 'body'; param?: 'secret' | 'webhook_secret'; value?: string }
+  | { kind: 'none' };
+
+async function postWebhook(
+  baseUrl: string,
+  body: unknown,
+  auth: WebhookAuth = { kind: 'header', value: testWebhookSecret }
+) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  let url = `${baseUrl}/api/webhooks/srs`;
+  let payload = body;
+
+  if (auth.kind === 'header' && auth.value) {
+    headers['x-srs-secret'] = auth.value;
+  } else if (auth.kind === 'query') {
+    const param = auth.param ?? 'secret';
+    const value = auth.value ?? testWebhookSecret;
+    url += `?${param}=${encodeURIComponent(value)}`;
+  } else if (auth.kind === 'body') {
+    const param = auth.param ?? 'secret';
+    const value = auth.value ?? testWebhookSecret;
+    payload =
+      typeof body === 'object' && body !== null
+        ? { ...(body as Record<string, unknown>), [param]: value }
+        : body;
+  }
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
-    body: JSON.stringify(body),
+    headers,
+    body: JSON.stringify(payload),
   });
   return {
     status: response.status,
@@ -98,7 +129,7 @@ describe('SRS webhook route', () => {
   const originalSecret = config.srsWebhookSecret;
 
   beforeEach(() => {
-    config.srsWebhookSecret = '';
+    config.srsWebhookSecret = testWebhookSecret;
   });
 
   afterEach(() => {
@@ -225,15 +256,108 @@ describe('SRS webhook route', () => {
     });
   });
 
-  it('rejects webhook calls with an invalid SRS secret', async () => {
-    config.srsWebhookSecret = 'expected-secret';
+  it('accepts webhook secret via query param (SRS http_hooks default)', async () => {
     const ctx = createMockContext();
 
     await withWebhookServer(ctx, async (baseUrl) => {
       const result = await postWebhook(
         baseUrl,
         { action: 'on_publish', app: 'live', stream: 'main-key' },
-        { 'x-srs-secret': 'wrong-secret' }
+        { kind: 'query' }
+      );
+
+      expect(result.status).toBe(200);
+      expect(result.body).toMatchObject({ code: 0, data: { sessionId: session.id } });
+    });
+  });
+
+  it('accepts webhook_secret query param alias', async () => {
+    const ctx = createMockContext();
+
+    await withWebhookServer(ctx, async (baseUrl) => {
+      const result = await postWebhook(
+        baseUrl,
+        { action: 'on_publish', app: 'live', stream: 'main-key' },
+        { kind: 'query', param: 'webhook_secret' }
+      );
+
+      expect(result.status).toBe(200);
+      expect(result.body).toMatchObject({ code: 0, data: { sessionId: session.id } });
+    });
+  });
+
+  it('accepts webhook secret via JSON body param', async () => {
+    const ctx = createMockContext();
+
+    await withWebhookServer(ctx, async (baseUrl) => {
+      const result = await postWebhook(
+        baseUrl,
+        { action: 'on_publish', app: 'live', stream: 'main-key' },
+        { kind: 'body' }
+      );
+
+      expect(result.status).toBe(200);
+      expect(result.body).toMatchObject({ code: 0, data: { sessionId: session.id } });
+    });
+  });
+
+  it('rejects webhook calls with an invalid SRS secret', async () => {
+    const ctx = createMockContext();
+
+    await withWebhookServer(ctx, async (baseUrl) => {
+      const result = await postWebhook(
+        baseUrl,
+        { action: 'on_publish', app: 'live', stream: 'main-key' },
+        { kind: 'header', value: 'wrong-secret' }
+      );
+
+      expect(result.status).toBe(401);
+      expect(result.body.error).toBe('Invalid webhook secret');
+      expect(ctx.repos.inputs.findByAppAndStreamKey).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rejects webhook calls when SRS_WEBHOOK_SECRET is not configured', async () => {
+    config.srsWebhookSecret = '';
+    const ctx = createMockContext();
+
+    await withWebhookServer(ctx, async (baseUrl) => {
+      const result = await postWebhook(baseUrl, {
+        action: 'on_publish',
+        app: 'live',
+        stream: 'main-key',
+      });
+
+      expect(result.status).toBe(401);
+      expect(result.body.error).toBe('Invalid webhook secret');
+      expect(ctx.repos.inputs.findByAppAndStreamKey).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rejects webhook calls when the secret is missing', async () => {
+    const ctx = createMockContext();
+
+    await withWebhookServer(ctx, async (baseUrl) => {
+      const result = await postWebhook(
+        baseUrl,
+        { action: 'on_publish', app: 'live', stream: 'main-key' },
+        { kind: 'none' }
+      );
+
+      expect(result.status).toBe(401);
+      expect(result.body.error).toBe('Invalid webhook secret');
+      expect(ctx.repos.inputs.findByAppAndStreamKey).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rejects webhook calls with wrong secret in query param', async () => {
+    const ctx = createMockContext();
+
+    await withWebhookServer(ctx, async (baseUrl) => {
+      const result = await postWebhook(
+        baseUrl,
+        { action: 'on_publish', app: 'live', stream: 'main-key' },
+        { kind: 'query', value: 'wrong-secret' }
       );
 
       expect(result.status).toBe(401);

@@ -39,10 +39,10 @@ const LoginPage: React.FC = () => {
 
   if (!loading && isAuthenticated) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 relative overflow-hidden">
+      <div className="min-h-screen flex flex-col items-center justify-center hf-app-shell relative overflow-hidden">
         <div className="w-full max-w-md px-6 py-12 relative z-10 text-center">
-          <h1 className="text-2xl font-bold text-white mb-2">Already signed in</h1>
-          <p className="text-slate-400 text-sm mb-8">
+          <h1 className="text-2xl font-bold hf-title mb-2">Already signed in</h1>
+          <p className="hf-muted text-sm mb-8">
             {user?.displayName || user?.email} is active in this browser.
           </p>
           <div className="flex flex-col gap-3">
@@ -67,7 +67,7 @@ const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center hf-app-shell relative overflow-hidden">
       {/* Gradient orbs background */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"></div>
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl"></div>
@@ -86,8 +86,8 @@ const LoginPage: React.FC = () => {
 
         {/* Title */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">HydroFoil Control</h1>
-          <p className="text-slate-400 text-sm">Live streaming platform control plane</p>
+          <h1 className="text-3xl font-bold hf-title mb-2">HydroFoil Control</h1>
+          <p className="hf-muted text-sm">Live streaming platform control plane</p>
         </div>
 
         {/* Form */}
@@ -183,7 +183,7 @@ const LoginPage: React.FC = () => {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-400">
+        <p className="mt-6 text-center text-sm hf-muted">
           No account yet?{' '}
           <Link to="/request-access" className="text-brand-400 hover:text-brand-300 font-medium">
             Request access

@@ -19,6 +19,7 @@ import {
 } from '../lib/access-control';
 import { ForbiddenError } from '../errors';
 import { resolveStorageObject } from '../services/recording-playback';
+import { domainMatches } from '../lib/playback-access';
 import { VodPlaybackTokenService } from '../services/vod-playback-token';
 
 const createVodRouteSchema = z.object({
@@ -77,20 +78,6 @@ function extractRequestDomain(req: Request): string | null {
   }
 
   return req.hostname ? String(req.hostname).toLowerCase() : null;
-}
-
-function domainMatches(allowedDomains: string[], requestDomain: string | null): boolean {
-  if (allowedDomains.length === 0) {
-    return true;
-  }
-  if (!requestDomain) {
-    return false;
-  }
-  const normalized = requestDomain.toLowerCase();
-  return allowedDomains.some((domain) => {
-    const expected = domain.trim().toLowerCase();
-    return normalized === expected || normalized.endsWith(`.${expected}`);
-  });
 }
 
 function isDirectBrowserNavigation(req: Request): boolean {
@@ -165,7 +152,10 @@ async function enforceVodAccess(ctx: AppContext, route: NonNullable<VodRouteReco
   const requestDomain = extractRequestDomain(req);
   const token = extractPlaybackToken(req);
 
-  if (block.playbackAccessPolicy === 'restricted' && !domainMatches(block.allowedDomains ?? [], requestDomain)) {
+  if (
+    block.playbackAccessPolicy === 'restricted' &&
+    !domainMatches(block.allowedDomains ?? [], requestDomain, false)
+  ) {
     throw new HttpError(403, 'Playback blocked for this domain');
   }
 

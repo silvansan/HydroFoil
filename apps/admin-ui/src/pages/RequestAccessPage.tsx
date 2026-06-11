@@ -38,10 +38,10 @@ const RequestAccessPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6">
+    <div className="min-h-screen flex flex-col items-center justify-center hf-app-shell px-6">
       <div className="w-full max-w-md relative z-10">
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">Request access</h1>
-        <p className="text-slate-400 text-sm mb-8 text-center">
+        <h1 className="text-2xl font-bold hf-title mb-2 text-center">Request access</h1>
+        <p className="hf-muted text-sm mb-8 text-center">
           Ask for a HydroFoil operator account. An administrator will invite you with a role
           (moderator, admin, or super-admin).
         </p>
@@ -100,7 +100,7 @@ const RequestAccessPage: React.FC = () => {
           </form>
         )}
 
-        <p className="mt-6 text-center text-sm text-slate-500">
+        <p className="mt-6 text-center text-sm hf-muted">
           Already have an account?{' '}
           <Link to="/login" className="text-brand-400 hover:underline">
             Sign in

@@ -125,7 +125,7 @@ export const PrivacyPolicyTargetPicker: React.FC<PrivacyPolicyTargetPickerProps>
               <button type="button" className="text-brand-400 hover:underline" onClick={onSelectAllOutputs}>
                 Select all
               </button>
-              <span className="text-slate-600">·</span>
+              <span className="hf-muted">·</span>
               <button type="button" className="text-slate-400 hover:underline" onClick={onClearOutputs}>
                 Clear
               </button>
@@ -171,7 +171,7 @@ export const PrivacyPolicyTargetPicker: React.FC<PrivacyPolicyTargetPickerProps>
               <button type="button" className="text-brand-400 hover:underline" onClick={onSelectAllVod}>
                 Select all
               </button>
-              <span className="text-slate-600">·</span>
+              <span className="hf-muted">·</span>
               <button type="button" className="text-slate-400 hover:underline" onClick={onClearVod}>
                 Clear
               </button>

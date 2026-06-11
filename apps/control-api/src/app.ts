@@ -5,6 +5,7 @@ import pino from 'pino';
 import pinoHttp from 'pino-http';
 
 import type { AppContext } from './context';
+import { config } from './config';
 import { HttpError } from './errors';
 import { authMiddleware } from './middleware/auth';
 import { createAccessScopeMiddleware } from './middleware/access-scope';
@@ -34,13 +35,70 @@ import { createSrsMediaProxyRouter } from './routes/srs-media-proxy';
 import { createVodPublicPlaybackRouter, createVodRoutesRouter } from './routes/vod-routes';
 import { createWebhooksRouter } from './routes/webhooks';
 
+function parseOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function buildCorsAllowedOrigins(): Set<string> {
+  const origins = new Set<string>();
+  const publicOrigin = parseOrigin(config.publicAppUrl);
+  if (publicOrigin) {
+    origins.add(publicOrigin);
+  }
+
+  const extra = process.env.CORS_ALLOWED_ORIGINS ?? '';
+  for (const part of extra.split(',').map((value) => value.trim()).filter(Boolean)) {
+    const origin = parseOrigin(part.includes('://') ? part : `https://${part}`);
+    if (origin) {
+      origins.add(origin);
+    }
+  }
+
+  return origins;
+}
+
+const corsAllowedOrigins = buildCorsAllowedOrigins();
+
 export function createApp(ctx: AppContext) {
   const app = express();
   const logger = pino();
 
   app.set('trust proxy', true);
 
-  app.use(cors());
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+
+        if (corsAllowedOrigins.has(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            const { hostname } = new URL(origin);
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+              callback(null, true);
+              return;
+            }
+          } catch {
+            // ignore malformed origin
+          }
+        }
+
+        callback(new Error('Not allowed by CORS'));
+      },
+      credentials: true,
+    })
+  );
   app.use(bodyParser.json());
   app.use(
     pinoHttp({

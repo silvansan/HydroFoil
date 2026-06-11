@@ -188,7 +188,7 @@ export const StorageFolderPicker: React.FC<StorageFolderPickerProps> = ({
                 <button
                   key={folder.key}
                   type="button"
-                  className="flex w-full items-center gap-3 border-b border-slate-800/70 px-4 py-3 text-left hover:bg-white/5"
+                  className="flex w-full items-center gap-3 border-b border-[var(--hf-border)] px-4 py-3 text-left hover:bg-white/5"
                   onClick={() => loadFolders(folder.key)}
                 >
                   <Folder className="h-5 w-5 text-cyan-300" />

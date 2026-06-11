@@ -53,9 +53,13 @@ export function extractRequestDomain(req: Request): string | null {
   }
 }
 
-export function domainMatches(allowedDomains: string[], requestDomain: string | null): boolean {
+export function domainMatches(
+  allowedDomains: string[],
+  requestDomain: string | null,
+  emptyMeansAllow = true
+): boolean {
   if (allowedDomains.length === 0) {
-    return true;
+    return emptyMeansAllow;
   }
   if (!requestDomain) {
     return false;
@@ -199,7 +203,7 @@ export async function enforcePlaybackAccess(
     if (tokenValid) {
       return output;
     }
-    if (!domainMatches(allowedDomains, requestDomain)) {
+    if (!domainMatches(allowedDomains, requestDomain, false)) {
       throw new HttpError(403, 'Playback blocked for this domain');
     }
     return output;
@@ -256,7 +260,7 @@ export function canServePublicEmbedManifest(
 
   if (block.playbackAccessPolicy === 'restricted') {
     const allowedDomains = Array.isArray(block.allowedDomains) ? block.allowedDomains : [];
-    return domainMatches(allowedDomains, extractRequestDomain(req));
+    return domainMatches(allowedDomains, extractRequestDomain(req), false);
   }
 
   return false;

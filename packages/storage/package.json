@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@hydrofoil/shared-types": "*",
-    "minio": "^7.0.32",
+    "minio": "^8.0.7",
     "zod": "^3.22.0"
   },
   "devDependencies": {

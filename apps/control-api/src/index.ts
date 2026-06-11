@@ -11,10 +11,13 @@ import { RecordingOrchestrator } from './services/recording-orchestrator';
 import { RestreamOrchestrator } from './services/restream-orchestrator';
 import { AudioOrchestrator } from './services/audio-orchestrator';
 import { startBandwidthHistorySampler } from './services/bandwidth-history';
+import { validateProductionConfig } from './lib/validate-production-config';
 
 const logger = pino();
 
 async function bootstrap() {
+  validateProductionConfig();
+
   const db = new Database({ connectionString: config.databaseUrl });
   await db.connect();
   logger.info('Connected to Postgres');

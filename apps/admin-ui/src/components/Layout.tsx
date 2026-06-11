@@ -31,12 +31,11 @@ import {
   useAuth,
 } from '../auth/AuthContext';
 import CollapsibleNavSection from './CollapsibleNavSection';
+import { applyTheme, initialTheme, type ThemeMode } from '../lib/theme';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
-
-type ThemeMode = 'light' | 'dark';
 
 type NavItem = {
   path: string;
@@ -60,13 +59,6 @@ const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
   manager: 'Moderator',
 };
-
-function initialTheme(): ThemeMode {
-  if (typeof window === 'undefined') return 'dark';
-  const saved = window.localStorage.getItem('hydrofoil-theme');
-  if (saved === 'light' || saved === 'dark') return saved;
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -117,8 +109,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   React.useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem('hydrofoil-theme', theme);
+    applyTheme(theme);
   }, [theme]);
 
   React.useEffect(() => {

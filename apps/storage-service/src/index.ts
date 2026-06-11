@@ -10,6 +10,28 @@ const app = express();
 
 app.use(express.json());
 
+const storageServiceApiKey = process.env.STORAGE_SERVICE_API_KEY?.trim();
+
+function requireStorageServiceApiKey(req: Request, res: Response, next: NextFunction) {
+  if (!storageServiceApiKey) {
+    next();
+    return;
+  }
+
+  const provided =
+    req.header('x-api-key') ??
+    (req.header('authorization')?.startsWith('Bearer ')
+      ? req.header('authorization')!.slice('Bearer '.length).trim()
+      : undefined);
+
+  if (provided !== storageServiceApiKey) {
+    res.status(401).json({ error: 'Unauthorized', timestamp: new Date().toISOString() });
+    return;
+  }
+
+  next();
+}
+
 // Initialize storage client
 const storageConfig: StorageConfig = {
   endpoint: process.env.MINIO_ENDPOINT || 'localhost:9000',
@@ -114,10 +136,12 @@ function toHttpError(error: unknown): HttpError {
   return new HttpError(500, 'Storage operation failed');
 }
 
-// Health check
+// Health check (unauthenticated for probes)
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.use(requireStorageServiceApiKey);
 
 // List objects in bucket
 app.get(

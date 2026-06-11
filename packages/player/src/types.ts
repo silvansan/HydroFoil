@@ -16,6 +16,8 @@ export interface HydroFoilPlayerProps {
   playbackMode?: HydroFoilPlaybackMode;
   /** Embed iframe: transparent shell, compact layout, quality cog from ABR hints. */
   variant?: 'default' | 'embed';
+  /** Direct download URL — shows top-left download control when set (VOD). */
+  downloadUrl?: string;
   className?: string;
   autoPlay?: boolean;
   muted?: boolean;

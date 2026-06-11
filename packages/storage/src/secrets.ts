@@ -8,7 +8,12 @@ function keyFromSecret(secret: string): Buffer {
 
 export function encryptStorageSecret(value: string | undefined, secretKey: string): string | undefined {
   if (!value) return undefined;
-  if (!secretKey) return value;
+  if (!secretKey) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('STORAGE_SECRET_KEY is required to encrypt storage credentials in production');
+    }
+    return value;
+  }
 
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', keyFromSecret(secretKey), iv);

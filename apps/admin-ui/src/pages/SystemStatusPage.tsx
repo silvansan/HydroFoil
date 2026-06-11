@@ -332,7 +332,7 @@ const SystemStatusPage: React.FC = () => {
                   onChange={(event) =>
                     setVisibility((current) => ({ ...current, [key]: event.target.checked }))
                   }
-                  className="rounded border-slate-600 text-brand-500"
+                  className="rounded border-[var(--hf-border)] text-brand-500"
                 />
                 <span>{label}</span>
               </label>
@@ -498,15 +498,15 @@ const SystemStatusPage: React.FC = () => {
                     <span className="text-slate-200">{telemetry.cpu.coreCount}</span>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-lg border border-slate-800/70 bg-slate-900/30 px-3 py-2">
+                    <div className="rounded-lg border border-[var(--hf-border)] bg-slate-900/30 px-3 py-2">
                       <p className="text-xs hf-muted">1m load</p>
                       <p className="mt-1 text-slate-200">{telemetry.cpu.loadAverage1m.toFixed(2)}</p>
                     </div>
-                    <div className="rounded-lg border border-slate-800/70 bg-slate-900/30 px-3 py-2">
+                    <div className="rounded-lg border border-[var(--hf-border)] bg-slate-900/30 px-3 py-2">
                       <p className="text-xs hf-muted">5m load</p>
                       <p className="mt-1 text-slate-200">{telemetry.cpu.loadAverage5m.toFixed(2)}</p>
                     </div>
-                    <div className="rounded-lg border border-slate-800/70 bg-slate-900/30 px-3 py-2">
+                    <div className="rounded-lg border border-[var(--hf-border)] bg-slate-900/30 px-3 py-2">
                       <p className="text-xs hf-muted">15m load</p>
                       <p className="mt-1 text-slate-200">{telemetry.cpu.loadAverage15m.toFixed(2)}</p>
                     </div>

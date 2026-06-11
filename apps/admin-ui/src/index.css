@@ -20,6 +20,7 @@
     --hf-sidebar-gradient: linear-gradient(180deg, #0a1424 0%, #061018 100%);
     --hf-brand-500: #00c8e8;
     --hf-brand-600: #00a0ba;
+    --hf-brand-300: #4de7ff;
     --hf-brand-800: #00505e;
     --hf-shadow: 0 4px 24px rgba(0, 200, 232, 0.12);
     --hf-breadcrumb-bg: rgb(30 41 59 / 0.9);
@@ -274,6 +275,7 @@ html {
   :root[data-theme='light'] .border-slate-700\/50,
   :root[data-theme='light'] .border-slate-800\/50,
   :root[data-theme='light'] .border-slate-800\/60,
+  :root[data-theme='light'] .border-slate-800\/70,
   :root[data-theme='light'] .border-slate-600 {
     border-color: color-mix(in srgb, var(--hf-border) 80%, transparent);
   }

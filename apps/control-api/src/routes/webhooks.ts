@@ -11,6 +11,7 @@ import type { AppContext } from '../context';
 import { BadRequestError } from '../errors';
 import { asyncHandler } from '../middleware/async-handler';
 import { config } from '../config';
+import { verifySrsWebhookSecret } from '../lib/srs-webhook-auth';
 import {
   recordingDurationSec,
   toFinalizeTarget,
@@ -40,15 +41,6 @@ function srsOk(res: { status: (code: number) => { json: (body: unknown) => void 
   res.status(200).json({ code: 0, ...(data ? { data } : {}) });
 }
 
-function verifySrsSecret(req: { header: (name: string) => string | undefined }, res: { status: (code: number) => { json: (body: unknown) => void } }): boolean {
-  const secret = req.header('x-srs-secret') ?? req.header('x-webhook-secret');
-  if (config.srsWebhookSecret && secret !== config.srsWebhookSecret) {
-    res.status(401).json({ code: 401, error: 'Invalid webhook secret' });
-    return false;
-  }
-  return true;
-}
-
 export function createWebhooksRouter(ctx: AppContext): Router {
   const router = Router();
   const gatewayReconciliation = new GatewayReconciliationService(ctx.repos);
@@ -56,7 +48,7 @@ export function createWebhooksRouter(ctx: AppContext): Router {
   router.post(
     '/srs',
     asyncHandler(async (req, res) => {
-      if (!verifySrsSecret(req, res)) return;
+      if (!verifySrsWebhookSecret(req, res)) return;
 
       const parsed = srsWebhookSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -207,7 +199,7 @@ export function createWebhooksRouter(ctx: AppContext): Router {
   router.post(
     '/srs/forward',
     asyncHandler(async (req, res) => {
-      if (!verifySrsSecret(req, res)) return;
+      if (!verifySrsWebhookSecret(req, res)) return;
 
       const parsed = srsForwardHookSchema.safeParse(req.body);
       if (!parsed.success) {

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/async-handler';
 import { BadRequestError, UnauthorizedError } from '../errors';
@@ -41,11 +42,23 @@ function readBearerToken(authorization: string | undefined) {
   return authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined;
 }
 
+const loginRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many login attempts. Please try again later.',
+    timestamp: new Date().toISOString(),
+  },
+});
+
 export function createAuthRouter(ctx: AppContext) {
   const router = Router();
 
   router.post(
     '/login',
+    loginRateLimit,
     asyncHandler(async (req, res) => {
       const parsed = loginSchema.safeParse(req.body);
       if (!parsed.success) {

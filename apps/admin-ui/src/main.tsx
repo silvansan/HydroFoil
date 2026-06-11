@@ -2,6 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
+import { applyTheme, initialTheme } from './lib/theme';
+
+applyTheme(initialTheme());
 
 import Layout from './components/Layout';
 import { AuthProvider } from './auth/AuthContext';

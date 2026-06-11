@@ -67,7 +67,9 @@ export const TextInput: React.FC<TextInputProps> = ({ label, error, className = 
       className={`rounded-lg border ${error ? 'border-red-500' : 'border-slate-600'} bg-slate-900/50 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 ${className}`}
       {...props}
     />
-    {error && <span className="text-sm text-red-600">{error}</span>}
+    {error && (
+      <span className="text-sm text-red-400 [html[data-theme=light]_&]:text-red-600">{error}</span>
+    )}
   </div>
 );
 
@@ -141,10 +143,14 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 export const Badge: React.FC<BadgeProps> = ({ variant = 'default', className = '', ...props }) => {
   const variants = {
-    default: 'bg-gray-100 text-gray-800',
-    success: 'bg-green-100 text-green-800',
-    warning: 'bg-yellow-100 text-yellow-800',
-    error: 'bg-red-100 text-red-800',
+    default:
+      'bg-gray-100 text-gray-800 [html:not([data-theme=light])_&]:border [html:not([data-theme=light])_&]:border-gray-500/30 [html:not([data-theme=light])_&]:bg-gray-500/15 [html:not([data-theme=light])_&]:text-gray-200',
+    success:
+      'bg-green-100 text-green-800 [html:not([data-theme=light])_&]:border [html:not([data-theme=light])_&]:border-green-500/30 [html:not([data-theme=light])_&]:bg-green-500/15 [html:not([data-theme=light])_&]:text-green-200',
+    warning:
+      'bg-yellow-100 text-yellow-800 [html:not([data-theme=light])_&]:border [html:not([data-theme=light])_&]:border-yellow-500/30 [html:not([data-theme=light])_&]:bg-yellow-500/15 [html:not([data-theme=light])_&]:text-yellow-200',
+    error:
+      'bg-red-100 text-red-800 [html:not([data-theme=light])_&]:border [html:not([data-theme=light])_&]:border-red-500/30 [html:not([data-theme=light])_&]:bg-red-500/15 [html:not([data-theme=light])_&]:text-red-200',
   };
 
   return <span className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${variants[variant]} ${className}`} {...props} />;

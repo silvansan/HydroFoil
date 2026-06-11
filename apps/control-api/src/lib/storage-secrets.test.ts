@@ -24,4 +24,17 @@ describe('storage secret helpers', () => {
       'STORAGE_SECRET_KEY is required to decrypt storage credentials'
     );
   });
+
+  it('refuses plaintext encryption in production when STORAGE_SECRET_KEY is empty', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+
+    try {
+      expect(() => encryptStorageSecret('plain-value', '')).toThrow(
+        'STORAGE_SECRET_KEY is required to encrypt storage credentials in production'
+      );
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
 });

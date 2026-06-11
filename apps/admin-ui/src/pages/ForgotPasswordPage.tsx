@@ -30,10 +30,10 @@ const ForgotPasswordPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6">
+    <div className="min-h-screen flex flex-col items-center justify-center hf-app-shell px-6">
       <div className="w-full max-w-md relative z-10">
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">Forgot password</h1>
-        <p className="text-slate-400 text-sm mb-8 text-center">
+        <h1 className="text-2xl font-bold hf-title mb-2 text-center">Forgot password</h1>
+        <p className="hf-muted text-sm mb-8 text-center">
           We will notify your HydroFoil administrator. Self-service email reset links are planned;
           until then an admin can set a new password under Users.
         </p>
@@ -77,7 +77,7 @@ const ForgotPasswordPage: React.FC = () => {
           </form>
         )}
 
-        <p className="mt-6 text-center text-sm text-slate-500">
+        <p className="mt-6 text-center text-sm hf-muted">
           Need an account?{' '}
           <Link to="/request-access" className="text-brand-400 hover:underline">
             Request access

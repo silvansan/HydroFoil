@@ -243,6 +243,7 @@ services:
       # Public ingest hostname (same as PUBLIC_APP_URL host). Enables HLS for RTMPS publishers.
       SRS_INGEST_VHOST: ${SRS_INGEST_VHOST:-}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
+      SRS_WEBHOOK_SECRET: ${SRS_WEBHOOK_SECRET:-}
     entrypoint: ['/bin/sh', '/usr/local/bin/hydrofoil-srs-entrypoint.sh']
     ports:
       - '${SRS_RTMP_PORT:-1935}:1935'
