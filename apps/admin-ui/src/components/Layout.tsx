@@ -50,6 +50,7 @@ type NavGroup = {
 };
 
 const APP_VERSION = '0.1.0';
+const BUILD_LABEL = import.meta.env.DEV ? 'dev' : null;
 const LICENSE_LABEL = import.meta.env.VITE_LICENSE_LABEL ?? 'AGPL-3.0';
 const REPOSITORY_URL =
   import.meta.env.VITE_REPOSITORY_URL ?? 'https://github.com/silvansan/HydroFoil';
@@ -183,7 +184,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </nav>
 
         <div className="hf-sidebar-meta px-4 py-4 border-t text-xs">
-          <p>v{APP_VERSION} · dev</p>
+          <p>
+            v{APP_VERSION}
+            {BUILD_LABEL ? ` · ${BUILD_LABEL}` : ''}
+          </p>
         </div>
       </aside>
 

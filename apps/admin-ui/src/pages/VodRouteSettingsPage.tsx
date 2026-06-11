@@ -8,6 +8,7 @@ import { Alert } from '../components/Alert';
 import { DeleteButton } from '../components/DeleteButton';
 import { FormError } from '../components/FormError';
 import { ResourceSettingsLayout } from '../components/ResourceSettingsLayout';
+import { StorageSourcePicker } from '../components/StorageSourcePicker';
 import { errorMessage } from '../lib/api-error';
 
 type VodRouteForm = {
@@ -259,10 +260,13 @@ const VodRouteSettingsPage: React.FC = () => {
                     ))}
                   </select>
                 </div>
-                <TextInput
-                  label={form.deliveryType === 'hls' ? 'Manifest path' : 'File path or prefix'}
+                <StorageSourcePicker
+                  storageLocationId={form.storageLocationId}
                   value={form.sourcePath}
-                  onChange={(e) => setForm((current) => (current ? { ...current, sourcePath: e.target.value } : current))}
+                  deliveryType={form.deliveryType}
+                  onChange={(sourcePath) =>
+                    setForm((current) => (current ? { ...current, sourcePath } : current))
+                  }
                 />
               </>
             ) : (

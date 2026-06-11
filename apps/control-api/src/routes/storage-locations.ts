@@ -5,9 +5,8 @@ import type { AppContext } from '../context';
 import { BadRequestError, NotFoundError } from '../errors';
 import { asyncHandler } from '../middleware/async-handler';
 import { parsePagination } from '../lib/pagination';
-import { decryptStorageSecret, encryptStorageSecret } from '../lib/storage-secrets';
+import { encryptStorageSecret } from '../lib/storage-secrets';
 import { config } from '../config';
-import { StorageClient, type StorageConfig } from '@hydrofoil/storage';
 import {
   assertStorageLocationAccess,
   canManageApplications,
@@ -15,6 +14,11 @@ import {
   getAccessScope,
 } from '../lib/access-control';
 import { ForbiddenError } from '../errors';
+import { normalizeStoragePrefix, resolveLocationObjectKey } from '../lib/storage-object-keys';
+import {
+  assertObjectStorageLocation,
+  storageClientForLocation,
+} from '../lib/storage-location-runtime';
 
 const createStorageSchema = z.object({
   name: z.string().min(1),
@@ -48,23 +52,8 @@ const moveFolderSchema = z.object({
   destinationPrefix: z.string().min(1),
 });
 
-function assertObjectStorageLocation(location: { type: string }) {
-  if (location.type !== 'minio' && location.type !== 's3') {
-    throw new BadRequestError('Object operations are only supported for MinIO/S3 locations');
-  }
-}
-
 function normalizePrefix(prefix: unknown): string {
-  return String(prefix ?? '').replace(/^\/+|\/+$/g, '');
-}
-
-function resolveLocationObjectKey(location: { prefixPath?: string | null }, objectKey: string): string {
-  const basePrefix = normalizePrefix(location.prefixPath);
-  const cleanKey = objectKey.replace(/^\/+/, '');
-  if (!basePrefix || cleanKey === basePrefix || cleanKey.startsWith(`${basePrefix}/`)) {
-    return cleanKey;
-  }
-  return `${basePrefix}/${cleanKey}`;
+  return normalizeStoragePrefix(prefix);
 }
 
 function resolveLocationPrefix(location: { prefixPath?: string | null }, prefix: string): string {
@@ -72,7 +61,7 @@ function resolveLocationPrefix(location: { prefixPath?: string | null }, prefix:
   return objectKey.endsWith('/') ? objectKey : `${objectKey}/`;
 }
 
-type ObjectStorageLocation = NonNullable<
+type StoredObjectStorageLocation = NonNullable<
   Awaited<ReturnType<AppContext['repos']['storageLocations']['findByIdWithSecrets']>>
 >;
 
@@ -80,7 +69,7 @@ async function loadObjectStorageLocation(
   ctx: AppContext,
   id: string,
   scope?: ReturnType<typeof getAccessScope>
-): Promise<ObjectStorageLocation> {
+): Promise<StoredObjectStorageLocation> {
   if (scope) {
     assertStorageLocationAccess(scope, id);
   }
@@ -88,26 +77,6 @@ async function loadObjectStorageLocation(
   if (!location) throw new NotFoundError('Storage location not found');
   assertObjectStorageLocation(location);
   return location;
-}
-
-function storageClientForLocation(location: ObjectStorageLocation): StorageClient {
-  const accessKey = decryptStorageSecret(location.accessKey, config.storageSecretKey);
-  const secretKey = decryptStorageSecret(location.secretKey, config.storageSecretKey);
-  const storageConfig: StorageConfig = {
-    endpoint: location.endpoint ?? config.minioEndpoint,
-    accessKey: accessKey ?? config.minioAccessKey,
-    secretKey: secretKey ?? config.minioSecretKey,
-    useSSL: location.useSsl ?? config.minioUseSsl,
-    publicEndpoint: location.publicEndpoint ?? config.minioPublicEndpoint,
-    region: location.region,
-    pathStyle: location.pathStyle ?? true,
-  };
-
-  if (!storageConfig.endpoint || !storageConfig.accessKey || !storageConfig.secretKey) {
-    throw new BadRequestError('Storage location is missing endpoint or credentials');
-  }
-
-  return new StorageClient(storageConfig);
 }
 
 export function createStorageLocationsRouter(ctx: AppContext): Router {

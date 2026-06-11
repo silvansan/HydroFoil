@@ -8,6 +8,11 @@ import type { AppContext } from '../context';
 import { config } from '../config';
 import { BadRequestError, HttpError, NotFoundError } from '../errors';
 import { buildStorageLocationRef } from '../lib/recording-defaults';
+import { resolveLocationObjectKey } from '../lib/storage-object-keys';
+import {
+  assertObjectStorageLocation,
+  storageClientForLocation,
+} from '../lib/storage-location-runtime';
 import { asyncHandler } from '../middleware/async-handler';
 import { parsePagination } from '../lib/pagination';
 import { formatZodError } from '../lib/zod-errors';
@@ -104,14 +109,57 @@ function absoluteUrl(req: Request, urlPath: string): string {
   return `${req.protocol}://${req.get('host')}${urlPath.startsWith('/') ? urlPath : `/${urlPath}`}`;
 }
 
+function looksLikeMediaFile(path: string): boolean {
+  return /\.(aac|flac|m3u8|m4a|m4v|mkv|mov|mp3|mp4|ogg|wav|webm)$/i.test(path.trim());
+}
+
+async function resolveVodBucketObjectKey(
+  ctx: AppContext,
+  route: Pick<NonNullable<VodRouteRecord>, 'storageLocationId' | 'sourcePath' | 'deliveryType'>,
+  assetPath?: string
+): Promise<string> {
+  const location = await ctx.repos.storageLocations.findById(
+    ctx.organizationId,
+    String(route.storageLocationId)
+  );
+  if (!location) {
+    throw new NotFoundError('Storage location not found');
+  }
+  const relativeKey = resolveStorageSourceObjectKey(route as NonNullable<VodRouteRecord>, assetPath);
+  return resolveLocationObjectKey(location, relativeKey);
+}
+
 async function validateVodRouteSource(ctx: AppContext, data: z.infer<typeof createVodRouteSchema>) {
   if (data.sourceType === 'storage-location') {
     if (!data.storageLocationId) {
       throw new BadRequestError('Storage-backed VOD routes require a storage location');
     }
-    const location = await ctx.repos.storageLocations.findById(ctx.organizationId, data.storageLocationId);
+    const location = await ctx.repos.storageLocations.findByIdWithSecrets(
+      ctx.organizationId,
+      data.storageLocationId
+    );
     if (!location) {
       throw new BadRequestError('Storage location not found');
+    }
+    assertObjectStorageLocation(location);
+
+    const objectKey = resolveLocationObjectKey(location, data.sourcePath);
+    const storage = storageClientForLocation(location);
+    const bucket = String(location.bucketName);
+
+    if (data.deliveryType === 'hls' || looksLikeMediaFile(data.sourcePath)) {
+      try {
+        await storage.getObjectStat(bucket, objectKey);
+      } catch {
+        throw new BadRequestError(`Media source not found at "${data.sourcePath}"`);
+      }
+      return;
+    }
+
+    const prefix = objectKey.endsWith('/') ? objectKey : `${objectKey}/`;
+    const objects = await storage.listObjects(bucket, { prefix, recursive: false, limit: 1 });
+    if (objects.length === 0) {
+      throw new BadRequestError(`No objects found under prefix "${data.sourcePath}"`);
     }
     return;
   }
@@ -253,7 +301,7 @@ async function resolveDirectProgressiveUrl(
   }
 
   const storageLocationRef = buildStorageLocationRef(ctx.organizationId, String(route.storageLocationId));
-  const objectKey = resolveStorageSourceObjectKey(route, assetPath);
+  const objectKey = await resolveVodBucketObjectKey(ctx, route, assetPath);
   const resolved = await resolveStorageObject(storageLocationRef, objectKey, ctx.repos);
   if (resolved.kind === 'local') {
     return null;
@@ -276,7 +324,7 @@ async function streamVodAsset(
 
   if (route.sourceType === 'storage-location') {
     const storageLocationRef = buildStorageLocationRef(ctx.organizationId, String(route.storageLocationId));
-    const objectKey = resolveStorageSourceObjectKey(route, assetPath);
+    const objectKey = await resolveVodBucketObjectKey(ctx, route, assetPath);
     const { storage, bucket, objectKey: resolvedObjectKey } = await resolveStorageObject(
       storageLocationRef,
       objectKey,

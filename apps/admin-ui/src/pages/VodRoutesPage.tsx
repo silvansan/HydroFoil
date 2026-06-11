@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import { PageHeader, Card, Button, Modal, TextInput } from '@hydrofoil/ui-kit';
 
 import { api } from '../api/client';
@@ -6,6 +7,7 @@ import type { DomainBlock, StorageLocation, VodRoute } from '../api/types';
 import { Alert } from '../components/Alert';
 import { ClickableRow } from '../components/ClickableRow';
 import { FormError } from '../components/FormError';
+import { StorageSourcePicker } from '../components/StorageSourcePicker';
 import { useResourceList } from '../hooks/useResourceList';
 
 type VodRouteForm = {
@@ -47,7 +49,10 @@ const initialForm: VodRouteForm = {
   generateIframePlaylist: false,
 };
 
+type VodRouteDraft = Partial<VodRouteForm>;
+
 const VodRoutesPage: React.FC = () => {
+  const location = useLocation();
   const { items, isLoading, error, reload } = useResourceList<VodRoute>(() => api.listVodRoutes());
   const [domainBlocks, setDomainBlocks] = React.useState<DomainBlock[]>([]);
   const [storageLocations, setStorageLocations] = React.useState<StorageLocation[]>([]);
@@ -64,6 +69,14 @@ const VodRoutesPage: React.FC = () => {
       }
     );
   }, []);
+
+  React.useEffect(() => {
+    const draft = (location.state as { createVodDraft?: VodRouteDraft } | null)?.createVodDraft;
+    if (!draft) return;
+    setForm((current) => ({ ...current, ...draft }));
+    setIsModalOpen(true);
+    window.history.replaceState({}, document.title);
+  }, [location.state]);
 
   const domainBlockById = React.useMemo(
     () => new Map(domainBlocks.map((block) => [block.id, block])),
@@ -249,15 +262,11 @@ const VodRoutesPage: React.FC = () => {
                   ))}
                 </select>
               </div>
-              <TextInput
-                label={form.deliveryType === 'hls' ? 'Manifest path' : 'File path or prefix'}
-                placeholder={
-                  form.deliveryType === 'hls'
-                    ? 'vod/demo/index.m3u8'
-                    : 'archive/ or archive/2026-05-31R.mp4'
-                }
+              <StorageSourcePicker
+                storageLocationId={form.storageLocationId}
                 value={form.sourcePath}
-                onChange={(e) => setForm((current) => ({ ...current, sourcePath: e.target.value }))}
+                deliveryType={form.deliveryType}
+                onChange={(sourcePath) => setForm((current) => ({ ...current, sourcePath }))}
               />
             </>
           ) : (

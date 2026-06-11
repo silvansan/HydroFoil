@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Modal, TextInput } from '@hydrofoil/ui-kit';
 import {
   Copy,
@@ -8,13 +8,14 @@ import {
   File,
   Folder,
   FolderPlus,
+  Radio,
   RefreshCw,
   Trash2,
   Upload,
 } from 'lucide-react';
 
 import { api } from '../api/client';
-import type { RecordingPolicy, StorageLocation } from '../api/types';
+import type { RecordingPolicy, StorageLocation, VodRoute } from '../api/types';
 import { Alert } from '../components/Alert';
 import { ResourceSettingsLayout } from '../components/ResourceSettingsLayout';
 import { errorMessage } from '../lib/api-error';
@@ -30,6 +31,7 @@ type DialogState =
   | { type: 'create-folder' }
   | { type: 'rename'; item: StorageObject }
   | { type: 'delete'; item: StorageObject }
+  | { type: 'bulk-delete'; items: StorageObject[] }
   | null;
 
 function formatBytes(size: number): string {
@@ -75,9 +77,12 @@ const iconClassName = 'h-4 w-4';
 
 const StorageLocationSettingsPage: React.FC = () => {
   const { locationId } = useParams<{ locationId: string }>();
+  const navigate = useNavigate();
   const [location, setLocation] = React.useState<StorageLocation | null>(null);
   const [linkedPolicies, setLinkedPolicies] = React.useState<RecordingPolicy[]>([]);
+  const [linkedVodRoutes, setLinkedVodRoutes] = React.useState<VodRoute[]>([]);
   const [objects, setObjects] = React.useState<StorageObject[]>([]);
+  const [listTruncated, setListTruncated] = React.useState(false);
   const [currentPrefix, setCurrentPrefix] = React.useState('');
   const [resolvedPrefix, setResolvedPrefix] = React.useState('');
   const [manualPrefix, setManualPrefix] = React.useState('');
@@ -97,6 +102,7 @@ const StorageLocationSettingsPage: React.FC = () => {
       try {
         const res = await api.listStorageObjects(locationId, trimSlashes(prefix) || undefined);
         setObjects(res.items);
+        setListTruncated(res.truncated);
         setResolvedPrefix(res.prefix);
         setCurrentPrefix(res.prefix);
         setManualPrefix(res.prefix);
@@ -115,10 +121,16 @@ const StorageLocationSettingsPage: React.FC = () => {
     Promise.all([
       api.getStorageLocation(locationId),
       api.listRecordingPolicies('manage'),
+      api.listVodRoutes(),
     ])
-      .then(([loc, policies]) => {
+      .then(([loc, policies, vodRoutes]) => {
         setLocation(loc);
         setLinkedPolicies(policies.items.filter((p) => p.storageLocationId === locationId));
+        setLinkedVodRoutes(
+          vodRoutes.items.filter(
+            (route) => route.sourceType === 'storage-location' && route.storageLocationId === locationId
+          )
+        );
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
   }, [locationId]);
@@ -244,7 +256,53 @@ const StorageLocationSettingsPage: React.FC = () => {
     if (!locationId || item.type === 'prefix') return;
     const signed = await api.signStorageObject(locationId, item.key);
     await navigator.clipboard.writeText(signed.url);
-    setNotice(`Signed VOD link copied for "${basename(item.key)}".`);
+    setNotice(`Signed download link copied for "${basename(item.key)}".`);
+  };
+
+  const publishAsVod = (item: StorageObject) => {
+    if (!locationId) return;
+    const isFolder = item.type === 'prefix';
+    const isHls = !isFolder && /\.m3u8$/i.test(item.key);
+    navigate('/vod-routes', {
+      state: {
+        createVodDraft: {
+          name: basename(item.key) || 'New VOD route',
+          sourceType: 'storage-location' as const,
+          storageLocationId: locationId,
+          sourcePath: trimSlashes(item.key),
+          deliveryType: isHls ? ('hls' as const) : ('progressive' as const),
+          publicPath: `/vod/${trimSlashes(item.key).split('/').pop() ?? 'archive'}`,
+        },
+      },
+    });
+  };
+
+  const openBulkDelete = () => {
+    if (selectedItems.length === 0) return;
+    setDialog({ type: 'bulk-delete', items: selectedItems });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!locationId || dialog?.type !== 'bulk-delete') return;
+    setError(null);
+    setNotice(null);
+    try {
+      let deletedCount = 0;
+      for (const item of dialog.items) {
+        if (item.type === 'prefix') {
+          const result = await api.deleteStorageFolder(locationId, item.key);
+          deletedCount += result.deleted;
+        } else {
+          await api.deleteStorageObject(locationId, item.key);
+          deletedCount += 1;
+        }
+      }
+      setNotice(`Deleted ${deletedCount} object(s) from ${dialog.items.length} selection(s).`);
+      closeDialog();
+      await loadObjects();
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to delete selected items'));
+    }
   };
 
   const toggleSelected = (key: string) => {
@@ -306,32 +364,71 @@ const StorageLocationSettingsPage: React.FC = () => {
             </dl>
           </Card>
 
-          <Card className="p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-100">Recording policies</h2>
-            {linkedPolicies.length === 0 ? (
-              <p className="text-xs hf-muted">No DVR policies use this location yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {linkedPolicies.map((policy) => (
-                  <li key={policy.id}>
-                    <Link
-                      to={`/recording-policies/${policy.id}`}
-                      className="text-sm hf-link hover:underline"
-                    >
-                      {policy.name}
-                    </Link>
-                    <span className="block font-mono text-xs text-slate-500">{policy.pathPrefix}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Link
-              to={`/recording-policies?storage=${locationId}`}
-              className="text-xs hf-link hover:underline inline-block"
-            >
-              + Add recording policy
-            </Link>
-          </Card>
+          <div className="space-y-4">
+            <Card className="p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-slate-100">Recording policies</h2>
+              {linkedPolicies.length === 0 ? (
+                <p className="text-xs hf-muted">No DVR policies use this location yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {linkedPolicies.map((policy) => (
+                    <li key={policy.id}>
+                      <Link
+                        to={`/recording-policies/${policy.id}`}
+                        className="text-sm hf-link hover:underline"
+                      >
+                        {policy.name}
+                      </Link>
+                      <span className="block font-mono text-xs text-slate-500">{policy.pathPrefix}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link
+                to={`/recording-policies?storage=${locationId}`}
+                className="text-xs hf-link hover:underline inline-block"
+              >
+                + Add recording policy
+              </Link>
+            </Card>
+
+            <Card className="p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-slate-100">VOD routes</h2>
+              {linkedVodRoutes.length === 0 ? (
+                <p className="text-xs hf-muted">No published VOD routes use this location yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {linkedVodRoutes.map((route) => (
+                    <li key={route.id}>
+                      <Link
+                        to={`/vod-routes/${route.id}`}
+                        className="text-sm hf-link hover:underline"
+                      >
+                        {route.name}
+                      </Link>
+                      <span className="block font-mono text-xs text-slate-500">{route.sourcePath}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                className="text-xs hf-link hover:underline"
+                onClick={() =>
+                  navigate('/vod-routes', {
+                    state: {
+                      createVodDraft: {
+                        sourceType: 'storage-location',
+                        storageLocationId: locationId,
+                      },
+                    },
+                  })
+                }
+              >
+                + Publish VOD route
+              </button>
+            </Card>
+          </div>
           </div>
 
           <Card className="overflow-hidden">
@@ -407,10 +504,22 @@ const StorageLocationSettingsPage: React.FC = () => {
                 <Button size="sm" variant="secondary" onClick={() => navigateTo(manualPrefix)}>
                   Go
                 </Button>
-                <div className="ml-auto text-xs hf-muted">
-                  Selected: {selectedKeys.size} of {objects.length}
+                <div className="ml-auto flex flex-wrap items-center gap-3 text-xs hf-muted">
+                  <span>
+                    Selected: {selectedKeys.size} of {objects.length}
+                  </span>
+                  {selectedKeys.size > 0 && (
+                    <Button size="sm" variant="danger" onClick={openBulkDelete}>
+                      Delete selected
+                    </Button>
+                  )}
                 </div>
               </div>
+              {listTruncated && (
+                <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  This folder has more than 500 objects. Narrow the prefix or use jump-to-prefix to find files not shown here.
+                </p>
+              )}
             </div>
 
             {isLoadingObjects ? (
@@ -475,6 +584,14 @@ const StorageLocationSettingsPage: React.FC = () => {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                className="rounded-md border border-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-800"
+                                onClick={() => publishAsVod(obj)}
+                                title="Publish as VOD route"
+                              >
+                                <Radio className={iconClassName} />
+                              </button>
                               {!isFolder && (
                                 <>
                                   <button
@@ -489,7 +606,7 @@ const StorageLocationSettingsPage: React.FC = () => {
                                     type="button"
                                     className="rounded-md border border-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-800"
                                     onClick={() => handleCopyLink(obj)}
-                                    title={isLikelyPreviewable(obj.key) ? 'Copy VOD link' : 'Copy signed link'}
+                                    title={isLikelyPreviewable(obj.key) ? 'Copy signed link' : 'Copy signed link'}
                                   >
                                     <Copy className={iconClassName} />
                                   </button>
@@ -522,14 +639,6 @@ const StorageLocationSettingsPage: React.FC = () => {
             )}
           </Card>
 
-          {selectedItems.length > 0 && (
-            <Card className="p-4">
-              <p className="text-sm hf-muted">
-                Bulk selection is ready for follow-up actions. Individual rename, download, link, and delete actions are
-                available from each row.
-              </p>
-            </Card>
-          )}
         </div>
       )}
 
@@ -541,10 +650,30 @@ const StorageLocationSettingsPage: React.FC = () => {
             ? 'New folder'
             : dialog?.type === 'rename'
               ? `Rename ${dialog.item.type === 'prefix' ? 'folder' : 'file'}`
-              : `Delete ${dialog?.item.type === 'prefix' ? 'folder' : 'file'}`
+              : dialog?.type === 'bulk-delete'
+                ? 'Delete selected items'
+                : `Delete ${dialog?.item.type === 'prefix' ? 'folder' : 'file'}`
         }
       >
-        {dialog?.type === 'delete' ? (
+        {dialog?.type === 'bulk-delete' ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-300">
+              Delete {dialog.items.length} selected item(s)? Folder selections remove every object under that prefix.
+            </p>
+            <ul className="max-h-40 overflow-y-auto rounded-lg border border-slate-700/70 px-3 py-2 text-sm text-slate-400">
+              {dialog.items.map((item) => (
+                <li key={item.key} className="font-mono">
+                  {basename(item.key)}
+                  {item.type === 'prefix' ? ' (folder)' : ''}
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeDialog}>Cancel</Button>
+              <Button variant="danger" onClick={handleBulkDelete}>Delete selected</Button>
+            </div>
+          </div>
+        ) : dialog?.type === 'delete' ? (
           <div className="space-y-4">
             <p className="text-sm text-slate-300">
               Delete <span className="font-mono text-slate-100">{basename(dialog.item.key)}</span>?
