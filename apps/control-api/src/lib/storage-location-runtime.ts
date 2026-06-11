@@ -23,15 +23,15 @@ export function assertObjectStorageLocation(location: { type: string }) {
 }
 
 export function storageClientForLocation(location: ObjectStorageLocation): StorageClient {
-  const accessKey = decryptStorageSecret(location.accessKey, config.storageSecretKey);
-  const secretKey = decryptStorageSecret(location.secretKey, config.storageSecretKey);
+  const accessKey = decryptStorageSecret(location.accessKey ?? undefined, config.storageSecretKey);
+  const secretKey = decryptStorageSecret(location.secretKey ?? undefined, config.storageSecretKey);
   const storageConfig: StorageConfig = {
     endpoint: location.endpoint ?? config.minioEndpoint,
     accessKey: accessKey ?? config.minioAccessKey,
     secretKey: secretKey ?? config.minioSecretKey,
     useSSL: location.useSsl ?? config.minioUseSsl,
     publicEndpoint: location.publicEndpoint ?? config.minioPublicEndpoint,
-    region: location.region,
+    region: location.region ?? undefined,
     pathStyle: location.pathStyle ?? true,
   };
 
