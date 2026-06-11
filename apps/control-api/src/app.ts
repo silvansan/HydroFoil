@@ -72,7 +72,8 @@ export function createApp(ctx: AppContext) {
   app.use(
     cors({
       origin(origin, callback) {
-        if (!origin) {
+        // Missing Origin (same-origin navigation) and opaque iframe origins (Origin: null).
+        if (!origin || origin === 'null') {
           callback(null, true);
           return;
         }

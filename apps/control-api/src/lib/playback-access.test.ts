@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { canServePublicEmbedManifest, domainMatches } from './playback-access';
+import {
+  canServePublicEmbedManifest,
+  domainMatches,
+  extractRequestDomain,
+} from './playback-access';
 import type { DomainBlock } from '@hydrofoil/shared-types';
 import type { Request } from 'express';
 
@@ -32,6 +36,19 @@ describe('domainMatches', () => {
   });
 });
 
+describe('extractRequestDomain', () => {
+  it('falls back to referer when Origin is the opaque null sentinel', () => {
+    expect(
+      extractRequestDomain(
+        mockRequest({
+          origin: 'null',
+          referer: 'https://hydrofoil.silvans.ch/embed?app=live&stream=main',
+        })
+      )
+    ).toBe('hydrofoil.silvans.ch');
+  });
+});
+
 describe('canServePublicEmbedManifest', () => {
   const organizationId = 'org-1';
   const app = 'live';
@@ -56,6 +73,26 @@ describe('canServePublicEmbedManifest', () => {
 
     expect(
       canServePublicEmbedManifest(organizationId, block, mockRequest({ origin: 'https://player.example.com' }), app, stream)
+    ).toBe(true);
+  });
+
+  it('allows restricted embeds when Origin is opaque null but referer matches the allowlist', () => {
+    const block = {
+      playbackAccessPolicy: 'restricted',
+      allowedDomains: ['hydrofoil.silvans.ch'],
+    } as DomainBlock;
+
+    expect(
+      canServePublicEmbedManifest(
+        organizationId,
+        block,
+        mockRequest({
+          origin: 'null',
+          referer: 'https://hydrofoil.silvans.ch/embed?app=live&stream=main',
+        }),
+        app,
+        stream
+      )
     ).toBe(true);
   });
 });

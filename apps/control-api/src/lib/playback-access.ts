@@ -38,7 +38,7 @@ export function extractRequestDomain(req: Request): string | null {
   const origin = req.headers.origin;
   const referer = req.headers.referer;
   const raw =
-    typeof origin === 'string' && origin
+    typeof origin === 'string' && origin && origin !== 'null'
       ? origin
       : typeof referer === 'string' && referer
         ? referer
