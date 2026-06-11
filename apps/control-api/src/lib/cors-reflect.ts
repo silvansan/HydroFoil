@@ -33,10 +33,15 @@ export function reflectEmbedManifestCors(req: Request, res: Response, next: Next
   next();
 }
 
+function isEmbedManifestPath(req: Request): boolean {
+  const path = req.path || req.url.split('?')[0] || '';
+  return path === '/api/playback/embed-manifest' || path.startsWith('/api/playback/embed-manifest/');
+}
+
 /** Re-apply embed CORS headers on error responses (global cors may not have run). */
 export function applyEmbedManifestCorsHeaders(req: Request, res: Response): void {
   if (res.headersSent) return;
-  if (!req.path.startsWith('/api/playback/embed-manifest')) return;
+  if (!isEmbedManifestPath(req)) return;
 
   const origin = req.headers.origin;
   if (isOpaqueNullOrigin(origin)) {

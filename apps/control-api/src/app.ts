@@ -64,51 +64,65 @@ function buildCorsAllowedOrigins(): Set<string> {
 
 const corsAllowedOrigins = buildCorsAllowedOrigins();
 
+const EMBED_MANIFEST_PATH = '/api/playback/embed-manifest';
+
+function isEmbedManifestRequest(req: express.Request): boolean {
+  const path = req.path || req.url.split('?')[0] || '';
+  return path === EMBED_MANIFEST_PATH || path.startsWith(`${EMBED_MANIFEST_PATH}/`);
+}
+
+const globalCors = cors({
+  origin(origin, callback) {
+    // Missing Origin (same-origin navigation) and opaque iframe origins (Origin: null).
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    if (origin === 'null') {
+      callback(null, 'null');
+      return;
+    }
+
+    if (corsAllowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const { hostname } = new URL(origin);
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          callback(null, true);
+          return;
+        }
+      } catch {
+        // ignore malformed origin
+      }
+    }
+
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+});
+
 export function createApp(ctx: AppContext) {
   const app = express();
   const logger = pino();
 
   app.set('trust proxy', true);
 
-  // Sandboxed embed iframes send Origin: null — reflect CORS before the global handler so
-  // errors still expose ACAO (cors rejects with next(err) and skips header injection).
-  app.use('/api/playback/embed-manifest', reflectEmbedManifestCors);
+  // Sandboxed embed iframes send Origin: null. Handle CORS locally and skip the global
+  // cors package for this path — it still calls next(err) for disallowed origins, which
+  // surfaced as a 500 "Not allowed by CORS" even when reflect middleware set ACAO.
+  app.use(EMBED_MANIFEST_PATH, reflectEmbedManifestCors);
 
-  app.use(
-    cors({
-      origin(origin, callback) {
-        // Missing Origin (same-origin navigation) and opaque iframe origins (Origin: null).
-        if (!origin) {
-          callback(null, true);
-          return;
-        }
-        if (origin === 'null') {
-          callback(null, 'null');
-          return;
-        }
-
-        if (corsAllowedOrigins.has(origin)) {
-          callback(null, true);
-          return;
-        }
-
-        if (process.env.NODE_ENV !== 'production') {
-          try {
-            const { hostname } = new URL(origin);
-            if (hostname === 'localhost' || hostname === '127.0.0.1') {
-              callback(null, true);
-              return;
-            }
-          } catch {
-            // ignore malformed origin
-          }
-        }
-
-        callback(new Error('Not allowed by CORS'));
-      },
-      credentials: true,
-    })
-  );
+  app.use((req, res, next) => {
+    if (isEmbedManifestRequest(req)) {
+      next();
+      return;
+    }
+    globalCors(req, res, next);
+  });
   app.use(bodyParser.json());
   app.use(
     pinoHttp({

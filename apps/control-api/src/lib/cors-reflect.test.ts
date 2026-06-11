@@ -1,5 +1,6 @@
 import http from 'node:http';
 
+import cors from 'cors';
 import express from 'express';
 import { describe, expect, it } from 'vitest';
 
@@ -60,6 +61,43 @@ describe('reflectEmbedManifestCors', () => {
         });
         expect(response.status).toBe(204);
         expect(response.headers.get('access-control-allow-origin')).toBe('null');
+      }
+    );
+  });
+
+  it('bypasses strict global cors that would reject Origin null', async () => {
+    const strictCors = cors({
+      origin(origin, callback) {
+        if (origin === 'null') {
+          callback(new Error('Not allowed by CORS'));
+          return;
+        }
+        callback(null, true);
+      },
+      credentials: true,
+    });
+
+    await withServer(
+      (app) => {
+        app.use('/api/playback/embed-manifest', reflectEmbedManifestCors);
+        app.use((req, res, next) => {
+          if (req.path === '/api/playback/embed-manifest') {
+            next();
+            return;
+          }
+          strictCors(req, res, next);
+        });
+        app.get('/api/playback/embed-manifest', (_req, res) => {
+          res.json({ ok: true });
+        });
+      },
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/playback/embed-manifest`, {
+          headers: { Origin: 'null' },
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.get('access-control-allow-origin')).toBe('null');
+        await expect(response.json()).resolves.toEqual({ ok: true });
       }
     );
   });
