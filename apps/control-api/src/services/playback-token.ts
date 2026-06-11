@@ -5,6 +5,8 @@ export interface PlaybackTokenPayload {
   app: string;
   stream: string;
   exp: number;
+  /** Generation counter; missing on legacy tokens is treated as 0. */
+  gen?: number;
 }
 
 function base64UrlEncode(value: string): string {

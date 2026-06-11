@@ -163,13 +163,15 @@ export async function buildInputPlaybackShare(
 
   const embedAccessOptions = { queryTokenOnly: !allowTokenIssue };
 
-  const token = resolveEmbedManifestToken(ctx.organizationId, effectiveBlock, req, app, stream, {
+  const token = await resolveEmbedManifestToken(ctx, ctx.organizationId, effectiveBlock, req, app, stream, {
     allowTokenIssue,
     expiresInSeconds,
+    inputId: String(input.id),
     ...embedAccessOptions,
   });
 
-  const manifestAllowed = canServePublicEmbedManifest(
+  const manifestAllowed = await canServePublicEmbedManifest(
+    ctx,
     ctx.organizationId,
     effectiveBlock,
     req,

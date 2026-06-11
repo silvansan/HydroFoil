@@ -9,6 +9,7 @@ import { asyncHandler } from '../middleware/async-handler';
 import {
   enforcePlaybackAccess,
   extractPlaybackToken,
+  issueRotatedPlaybackToken,
   resolveStreamPlaybackBlock,
   usesProtectedPlayback,
 } from '../lib/playback-access';
@@ -259,11 +260,11 @@ export function createPlaybackRouter(ctx: AppContext): Router {
       const expiresInSeconds = parsed.data.expiresInSeconds ?? config.playbackTokenTtlSeconds;
       await resolvePlaybackOutput(ctx, app, stream);
 
-      const token = playbackTokenService.issueToken({
+      const token = await issueRotatedPlaybackToken(ctx, {
         organizationId: ctx.organizationId,
         app,
         stream,
-        exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
+        expiresInSeconds,
       });
 
       const playback = await resolveLivePlayback(app, stream, { probe: false });

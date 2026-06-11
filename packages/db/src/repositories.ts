@@ -415,6 +415,31 @@ export class InputRepository {
     return result.rows[0] ? mapInput(result.rows[0]) : null;
   }
 
+  async getPlaybackTokenGeneration(organizationId: string, inputId: string): Promise<number> {
+    const result = await this.db.query(
+      `SELECT playback_token_generation
+       FROM inputs
+       WHERE organization_id = $1 AND id = $2`,
+      [organizationId, inputId]
+    );
+    return result.rows[0] ? Number(result.rows[0].playback_token_generation ?? 0) : 0;
+  }
+
+  async incrementPlaybackTokenGeneration(organizationId: string, inputId: string): Promise<number> {
+    const result = await this.db.query(
+      `UPDATE inputs
+       SET playback_token_generation = playback_token_generation + 1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE organization_id = $1 AND id = $2
+       RETURNING playback_token_generation`,
+      [organizationId, inputId]
+    );
+    if (!result.rows[0]) {
+      throw new Error(`Input ${inputId} not found for playback token rotation`);
+    }
+    return Number(result.rows[0].playback_token_generation);
+  }
+
   async findByAppAndStreamKey(organizationId: string, appName: string, streamKey: string) {
     const result = await this.db.query(
       `${INPUT_SELECT}
@@ -610,6 +635,18 @@ export class RouteRepository {
       [organizationId, inputId]
     );
     return result.rows.map(mapRoute);
+  }
+
+  async findInputIdByOutputId(organizationId: string, outputId: string): Promise<string | null> {
+    const result = await this.db.query(
+      `SELECT input_id
+       FROM routes
+       WHERE organization_id = $1 AND $2 = ANY(output_ids)
+       ORDER BY created_at
+       LIMIT 1`,
+      [organizationId, outputId]
+    );
+    return result.rows[0] ? String(result.rows[0].input_id) : null;
   }
 
   async create(

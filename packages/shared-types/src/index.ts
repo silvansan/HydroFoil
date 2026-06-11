@@ -35,6 +35,8 @@ export interface Input extends BaseEntity {
   streamProfileIds?: string[];
   recordingPolicyIds?: string[];
   audioFeedProfileIds?: string[];
+  /** Incremented when a new signed playback link is issued; older token generations are rejected. */
+  playbackTokenGeneration?: number;
   application?: Pick<Application, 'id' | 'name' | 'appName'>;
 }
 

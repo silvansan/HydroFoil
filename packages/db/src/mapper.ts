@@ -96,6 +96,7 @@ export function mapInput(row: Record<string, unknown>) {
     streamProfileIds,
     recordingPolicyIds,
     audioFeedProfileIds,
+    playbackTokenGeneration: Number(mapped.playback_token_generation ?? 0),
     application:
       applicationId && applicationAppName
         ? {

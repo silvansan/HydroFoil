@@ -65,7 +65,7 @@ export const InputPlaybackShareCard: React.FC<InputPlaybackShareCardProps> = ({
     setGenerating(true);
     try {
       await Promise.resolve(onRegenerate({ expiresAt }));
-      onCopied?.('Signed link regenerated');
+      onCopied?.('Signed link regenerated; previous links no longer work');
     } finally {
       setGenerating(false);
     }

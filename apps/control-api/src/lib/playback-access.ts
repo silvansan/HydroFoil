@@ -105,20 +105,85 @@ export function usesProtectedPlayback(block: DomainBlock | undefined): boolean {
   return block.playbackAccessPolicy !== 'public';
 }
 
-function verifyPlaybackToken(
+export function tokenGenerationIsValid(tokenGen: number, currentGeneration: number): boolean {
+  return tokenGen >= currentGeneration;
+}
+
+export async function resolveInputIdForPlaybackStream(
+  ctx: AppContext,
+  app: string,
+  stream: string
+): Promise<string | null> {
+  const input = await ctx.repos.inputs.findByAppAndStreamKey(ctx.organizationId, app, stream);
+  if (input?.enabled) {
+    return input.id;
+  }
+
+  const outputs = (await ctx.repos.outputs.listAll(ctx.organizationId)) as Output[];
+  const output = outputs.find(
+    (item) => item.enabled && item.gatewayAppName === app && item.gatewayStreamName === stream
+  );
+  if (!output) {
+    return null;
+  }
+
+  return ctx.repos.routes.findInputIdByOutputId(ctx.organizationId, output.id);
+}
+
+async function verifyPlaybackToken(
+  ctx: AppContext,
   token: string | null | undefined,
   organizationId: string,
   app: string,
   stream: string
-): boolean {
+): Promise<boolean> {
   if (!token) return false;
   const payload = playbackTokenService.verifyToken(token);
-  return Boolean(
-    payload &&
-      payload.organizationId === organizationId &&
-      payload.app === app &&
-      payload.stream === stream
+  if (
+    !payload ||
+    payload.organizationId !== organizationId ||
+    payload.app !== app ||
+    payload.stream !== stream
+  ) {
+    return false;
+  }
+
+  const inputId = await resolveInputIdForPlaybackStream(ctx, app, stream);
+  if (!inputId) {
+    return true;
+  }
+
+  const currentGeneration = await ctx.repos.inputs.getPlaybackTokenGeneration(
+    organizationId,
+    inputId
   );
+  const tokenGen = payload.gen ?? 0;
+  return tokenGenerationIsValid(tokenGen, currentGeneration);
+}
+
+export async function issueRotatedPlaybackToken(
+  ctx: AppContext,
+  params: {
+    organizationId: string;
+    app: string;
+    stream: string;
+    expiresInSeconds: number;
+    inputId?: string;
+  }
+): Promise<string> {
+  const inputId =
+    params.inputId ?? (await resolveInputIdForPlaybackStream(ctx, params.app, params.stream));
+  const gen = inputId
+    ? await ctx.repos.inputs.incrementPlaybackTokenGeneration(ctx.organizationId, inputId)
+    : 0;
+
+  return playbackTokenService.issueToken({
+    organizationId: params.organizationId,
+    app: params.app,
+    stream: params.stream,
+    exp: Math.floor(Date.now() / 1000) + params.expiresInSeconds,
+    gen,
+  });
 }
 
 async function resolveEffectiveDomainBlock(
@@ -197,7 +262,7 @@ export async function enforcePlaybackAccess(
   const requestDomain = extractRequestDomain(req);
   const token = extractPlaybackToken(req);
   const allowedDomains = Array.isArray(block.allowedDomains) ? block.allowedDomains : [];
-  const tokenValid = verifyPlaybackToken(token, ctx.organizationId, app, stream);
+  const tokenValid = await verifyPlaybackToken(ctx, token, ctx.organizationId, app, stream);
 
   if (block.playbackAccessPolicy === 'restricted') {
     if (tokenValid) {
@@ -241,20 +306,21 @@ function resolveRequestToken(req: Request, options?: EmbedAccessOptions): string
   return options?.queryTokenOnly ? extractEmbedQueryToken(req) : extractPlaybackToken(req);
 }
 
-export function canServePublicEmbedManifest(
+export async function canServePublicEmbedManifest(
+  ctx: AppContext,
   organizationId: string,
   block: DomainBlock | undefined,
   req: Request,
   app: string,
   stream: string,
   options?: EmbedAccessOptions
-): boolean {
+): Promise<boolean> {
   if (!block || block.playbackAccessPolicy === 'public') {
     return true;
   }
 
   const token = resolveRequestToken(req, options);
-  if (verifyPlaybackToken(token, organizationId, app, stream)) {
+  if (await verifyPlaybackToken(ctx, token, organizationId, app, stream)) {
     return true;
   }
 
@@ -266,38 +332,45 @@ export function canServePublicEmbedManifest(
   return false;
 }
 
-export function resolveEmbedManifestToken(
+export async function resolveEmbedManifestToken(
+  ctx: AppContext,
   organizationId: string,
   block: DomainBlock | undefined,
   req: Request,
   app: string,
   stream: string,
-  options: { allowTokenIssue: boolean; expiresInSeconds: number; queryTokenOnly?: boolean }
-): string | undefined {
+  options: {
+    allowTokenIssue: boolean;
+    expiresInSeconds: number;
+    queryTokenOnly?: boolean;
+    inputId?: string;
+  }
+): Promise<string | undefined> {
   const needsToken = policyNeedsToken(block);
   if (!needsToken) {
     return undefined;
   }
 
+  if (options.allowTokenIssue) {
+    return issueRotatedPlaybackToken(ctx, {
+      organizationId,
+      app,
+      stream,
+      expiresInSeconds: options.expiresInSeconds,
+      inputId: options.inputId,
+    });
+  }
+
   const requestToken = resolveRequestToken(req, options);
-  if (requestToken && verifyPlaybackToken(requestToken, organizationId, app, stream)) {
+  if (requestToken && (await verifyPlaybackToken(ctx, requestToken, organizationId, app, stream))) {
     return requestToken;
   }
 
   if (
     block?.playbackAccessPolicy === 'restricted' &&
-    canServePublicEmbedManifest(organizationId, block, req, app, stream, options)
+    (await canServePublicEmbedManifest(ctx, organizationId, block, req, app, stream, options))
   ) {
     return undefined;
-  }
-
-  if (options.allowTokenIssue) {
-    return playbackTokenService.issueToken({
-      organizationId,
-      app,
-      stream,
-      exp: Math.floor(Date.now() / 1000) + options.expiresInSeconds,
-    });
   }
 
   return undefined;
