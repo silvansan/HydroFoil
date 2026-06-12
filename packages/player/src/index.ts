@@ -1,5 +1,11 @@
 export { HydroFoilPlayer } from './HydroFoilPlayer';
 export {
+  isRootOnlyMediaUrl,
+  mediaOriginFromUrl,
+  resolveMediaOrigin,
+  resolveMediaUrl,
+} from './media-url';
+export {
   buildHydroFoilScriptEmbed,
   buildHydroFoilIframeEmbed,
   buildLiveEmbedPageUrl,

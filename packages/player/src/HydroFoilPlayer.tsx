@@ -2,8 +2,18 @@ import React from 'react';
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
 
+import { resolveMediaUrl } from './media-url';
 import type { HydroFoilPlayerProps } from './types';
 import './player.css';
+
+function isPictureInPictureAllowed(): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    return 'pictureInPictureEnabled' in document && Boolean(document.pictureInPictureEnabled);
+  } catch {
+    return false;
+  }
+}
 
 type QualityOption = { index: number; label: string; height?: number };
 
@@ -195,8 +205,16 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   const progressRef = React.useRef<HTMLDivElement>(null);
   const hideControlsTimer = React.useRef<number | null>(null);
 
+  const resolvedSrc = React.useMemo(() => resolveMediaUrl(src) ?? '', [src]);
   const flvCandidates = React.useMemo(
-    () => [...new Set([flvSrc, ...flvFallbackSrcs].filter((url): url is string => Boolean(url)))],
+    () =>
+      [
+        ...new Set(
+          [flvSrc, ...flvFallbackSrcs]
+            .map((url) => resolveMediaUrl(url))
+            .filter((url): url is string => Boolean(url))
+        ),
+      ],
     [flvSrc, flvFallbackSrcs]
   );
   const [flvCandidateIndex, setFlvCandidateIndex] = React.useState(0);
@@ -280,7 +298,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
   }, []);
 
   React.useEffect(() => {
-    setPipSupported(typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && document.pictureInPictureEnabled);
+    setPipSupported(isPictureInPictureAllowed());
   }, []);
 
   React.useEffect(() => {
@@ -419,7 +437,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
 
   React.useEffect(() => {
     const video = videoRef.current;
-    if (!video || transport !== 'hls' || !src) return;
+    if (!video || transport !== 'hls' || !resolvedSrc) return;
 
     setError(null);
     setQualityOptions([]);
@@ -429,7 +447,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     hlsRef.current = null;
 
     const onVideoError = () => {
-      if (flvSrc && showLive) {
+      if (flvCandidates.length > 0 && showLive) {
         setTransport('flv');
         return;
       }
@@ -467,13 +485,13 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     };
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = src;
+      video.src = resolvedSrc;
       if (autoPlay) video.play().catch(() => undefined);
       return () => video.removeEventListener('error', onVideoError);
     }
 
     if (!Hls.isSupported()) {
-      if (flvSrc && showLive) {
+      if (flvCandidates.length > 0 && showLive) {
         setTransport('flv');
         return () => video.removeEventListener('error', onVideoError);
       }
@@ -486,13 +504,13 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
       lowLatencyMode: playbackMode === 'live-hls',
     });
     hlsRef.current = hls;
-    hls.loadSource(src);
+    hls.loadSource(resolvedSrc);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       applyQualityOptions(hls);
-      if (autoPlay && autoPlayedSrcRef.current !== src) {
+      if (autoPlay && autoPlayedSrcRef.current !== resolvedSrc) {
         video.play().catch(() => undefined);
-        autoPlayedSrcRef.current = src;
+        autoPlayedSrcRef.current = resolvedSrc;
       }
     });
     hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
@@ -500,7 +518,7 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
     });
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal) return;
-      if (flvSrc && showLive) {
+      if (flvCandidates.length > 0 && showLive) {
         setTransport('flv');
         return;
       }
@@ -518,11 +536,11 @@ export const HydroFoilPlayer: React.FC<HydroFoilPlayerProps> = ({
       hls.destroy();
       hlsRef.current = null;
     };
-  }, [src, flvSrc, autoPlay, playbackMode, showLive, transport, pendingQualityHeight, applyHlsLevelForHeight]);
+  }, [resolvedSrc, flvCandidates.length, autoPlay, playbackMode, showLive, transport, pendingQualityHeight, applyHlsLevelForHeight]);
 
   React.useEffect(() => {
     autoPlayedSrcRef.current = null;
-  }, [src, activeFlvSrc]);
+  }, [resolvedSrc, activeFlvSrc]);
 
   React.useEffect(() => {
     const hls = hlsRef.current;

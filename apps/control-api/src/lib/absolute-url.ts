@@ -10,6 +10,7 @@ export function appendTokenToPath(path: string, token?: string): string {
 
 /** Operator-facing absolute URL — prefers PUBLIC_APP_URL so embeds stay HTTPS behind TLS proxies. */
 export function absoluteUrl(req: Request, urlPath: string): string {
+  if (!urlPath?.trim()) return '';
   if (/^https?:\/\//i.test(urlPath)) return urlPath;
 
   const normalizedPath = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;

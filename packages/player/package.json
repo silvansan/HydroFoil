@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "vitest run --passWithNoTests",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "typescript": "^5.1.0"
+    "typescript": "^5.1.0",
+    "vitest": "^3.2.4"
   }
 }

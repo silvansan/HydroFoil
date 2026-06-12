@@ -205,8 +205,8 @@ export async function buildInputPlaybackShare(
       ? appendTokenToPath(playback.protectedFlv, token)
       : playback.srsMediaFlv
     : '';
-  const hlsUrl = absoluteUrl(req, hlsPath);
-  const flvUrl = absoluteUrl(req, flvPath);
+  const hlsUrl = hlsPath ? absoluteUrl(req, hlsPath) : '';
+  const flvUrl = flvPath ? absoluteUrl(req, flvPath) : '';
   const embedUrl = absoluteUrl(
     req,
     `/embed?${new URLSearchParams({
