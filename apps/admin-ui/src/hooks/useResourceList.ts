@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { isAuthSessionExpiredError } from '../api/client';
+
 export function useResourceList<T>(
   loader: () => Promise<{ items: T[] }>,
   deps: React.DependencyList = []
@@ -15,6 +17,7 @@ export function useResourceList<T>(
       const result = await loader();
       setItems(result.items);
     } catch (err) {
+      if (isAuthSessionExpiredError(err)) return;
       const message = err instanceof Error ? err.message : 'Failed to load data';
       setError(
         message.includes('fetch')

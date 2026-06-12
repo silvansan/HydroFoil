@@ -2,7 +2,12 @@ import React from 'react';
 
 import { useNavigate } from 'react-router-dom';
 
-import { api, AUTH_SESSION_EXPIRED_EVENT } from '../api/client';
+import {
+  api,
+  AUTH_SESSION_EXPIRED_EVENT,
+  isAuthSessionExpiredError,
+  resetAuthSessionExpiredState,
+} from '../api/client';
 
 import type { User, UserAccess } from '../api/types';
 import { setOperatorPublicUrls } from '../lib/operator-urls';
@@ -215,6 +220,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     localStorage.removeItem(TOKEN_KEY);
 
+    resetAuthSessionExpiredState();
+
     setUserState(null);
 
     setAccess(EMPTY_ACCESS);
@@ -276,7 +283,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       clearSession();
 
-      navigate('/login', { replace: true });
+      navigate('/login?session=expired', { replace: true });
 
     };
 
@@ -285,6 +292,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
 
   }, [clearSession, navigate]);
+
+
+
+  React.useEffect(() => {
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+
+      if (isAuthSessionExpiredError(event.reason)) {
+
+        event.preventDefault();
+
+      }
+
+    };
+
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+
+    return () => window.removeEventListener('unhandledrejection', onUnhandledRejection);
+
+  }, []);
 
 
 

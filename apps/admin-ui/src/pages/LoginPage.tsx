@@ -1,11 +1,13 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { TextInput } from '@hydrofoil/ui-kit';
 import { useAuth } from '../auth/AuthContext';
 import { Eye, EyeOff, LogOut } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
   const { login, logout, isAuthenticated, loading, user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get('session') === 'expired';
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
@@ -144,6 +146,12 @@ const LoginPage: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {sessionExpired && !error && (
+            <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-100 text-sm">
+              Your session expired. Sign in again to continue.
+            </div>
+          )}
 
           {/* Error Message */}
           {error && (

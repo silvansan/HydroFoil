@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Play } from 'lucide-react';
 import { Card, PageHeader, TextInput, Button } from '@hydrofoil/ui-kit';
 
-import { api } from '../api/client';
+import { api, isAuthSessionExpiredError } from '../api/client';
 import type { DomainBlock, Input, LiveSession, StreamProfile } from '../api/types';
 import { InputPlaybackShareCard } from '../components/InputPlaybackShareCard';
 import { useInputPlaybackShare } from '../hooks/useInputPlaybackShare';
@@ -113,26 +113,34 @@ const StreamKeySettingsPage: React.FC = () => {
       api.listStreamProfiles(),
       api.listAudioFeedProfiles(),
       api.listDomainBlocks(),
-    ]).then(([policyRes, streamRes, audioRes, domainRes]) => {
-      setDomainBlocks(domainRes.items);
-      setPolicies(
-        (policyRes.items as Array<{ id: string; name: string }>).map((p) => ({
-          id: p.id,
-          name: p.name,
-        }))
-      );
-      setStreamProfiles(streamRes.items);
-      setAudioFeeds(
-        (audioRes.items as Array<{ id: string; name: string }>).map((p) => ({
-          id: p.id,
-          name: p.name,
-        }))
-      );
-    });
+    ])
+      .then(([policyRes, streamRes, audioRes, domainRes]) => {
+        setDomainBlocks(domainRes.items);
+        setPolicies(
+          (policyRes.items as Array<{ id: string; name: string }>).map((p) => ({
+            id: p.id,
+            name: p.name,
+          }))
+        );
+        setStreamProfiles(streamRes.items);
+        setAudioFeeds(
+          (audioRes.items as Array<{ id: string; name: string }>).map((p) => ({
+            id: p.id,
+            name: p.name,
+          }))
+        );
+      })
+      .catch((err) => {
+        if (isAuthSessionExpiredError(err)) return;
+        setError(err instanceof Error ? err.message : 'Failed to load policy options');
+      });
   }, []);
 
   React.useEffect(() => {
-    load().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+    load().catch((err) => {
+      if (isAuthSessionExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : 'Failed to load');
+    });
   }, [load]);
 
   const notify = (message: string) => {

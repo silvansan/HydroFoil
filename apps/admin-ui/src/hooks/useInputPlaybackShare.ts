@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { api } from '../api/client';
+import { api, isAuthSessionExpiredError } from '../api/client';
 import type { InputPlaybackShare } from '../api/types';
 
 export type PlaybackShareOptions = {
@@ -30,8 +30,10 @@ export function useInputPlaybackShare(inputId: string | undefined) {
         })
         .catch((err) => {
           setShare(null);
-          setError(err instanceof Error ? err.message : 'Failed to load playback links');
-          throw err;
+          if (!isAuthSessionExpiredError(err)) {
+            setError(err instanceof Error ? err.message : 'Failed to load playback links');
+          }
+          return null;
         })
         .finally(() => setLoading(false));
     },

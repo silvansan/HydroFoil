@@ -36,6 +36,23 @@ const TOKEN_KEY = 'hf_auth_token';
 
 export const AUTH_SESSION_EXPIRED_EVENT = 'hydrofoil:auth-session-expired';
 
+export class AuthSessionExpiredError extends Error {
+  constructor() {
+    super('Your session has expired. Please sign in again.');
+    this.name = 'AuthSessionExpiredError';
+  }
+}
+
+export function isAuthSessionExpiredError(err: unknown): err is AuthSessionExpiredError {
+  return err instanceof AuthSessionExpiredError;
+}
+
+let sessionExpiredNotified = false;
+
+export function resetAuthSessionExpiredState() {
+  sessionExpiredNotified = false;
+}
+
 function isPublicApiRequest(path: string, method: string | undefined) {
   if (method?.toUpperCase() === 'GET' && path === '/api/system/public-urls') {
     return true;
@@ -55,6 +72,8 @@ function notifySessionExpired(path: string, init?: RequestInit) {
   if (!window.localStorage.getItem(TOKEN_KEY)) return;
   if (isPublicApiRequest(path, init?.method)) return;
   window.localStorage.removeItem(TOKEN_KEY);
+  if (sessionExpiredNotified) return;
+  sessionExpiredNotified = true;
   window.dispatchEvent(new CustomEvent(AUTH_SESSION_EXPIRED_EVENT));
 }
 
@@ -83,6 +102,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const raw = (body as { error?: string }).error ?? `Request failed (${response.status})`;
     if (response.status === 401 && !isPublicApiRequest(path, init?.method)) {
       notifySessionExpired(path, init);
+      throw new AuthSessionExpiredError();
     }
     throw new Error(formatApiError(raw));
   }
